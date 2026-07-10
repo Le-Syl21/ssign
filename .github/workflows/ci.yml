@@ -86,6 +86,10 @@ jobs:
         if: matrix.target != 'x86_64-apple-darwin' && !matrix.cross
         run: cargo test --release --target ${{ matrix.target }}
 
+      - name: Smoke test (--help runs)
+        if: matrix.target != 'x86_64-apple-darwin' && !matrix.cross
+        run: cargo run --release --target ${{ matrix.target }} -- --help
+
       # --- Package ---
       - name: Package (Unix)
         if: runner.os != 'Windows'
