@@ -145,6 +145,12 @@ or read the seed; every run waits for the owner's click. Also keep the signing
 job on `workflow_dispatch` or protected-branch pushes, **never** on
 `pull_request` from forks.
 
+**In a release pipeline**, make signing a **job in the same workflow** as the
+build/release (gated by `environment: signing`, with the release job set to
+`needs:` it) — so a tag becomes *build → approve → signed release*. Don't rely on
+a separate workflow triggered by `release: published`: a release created by the
+built-in `GITHUB_TOKEN` **does not** trigger other workflows.
+
 ### Status
 
 Working end to end for **PE** files, proven in CI: `ssign` produces a valid
@@ -274,6 +280,12 @@ Résultat : une pull request — même malveillante — **ne peut pas** déclenc
 signature ni lire le seed ; chaque exécution attend le clic du propriétaire.
 Gardez aussi le job de signature sur `workflow_dispatch` ou des pushes de
 branches protégées, **jamais** sur `pull_request` depuis un fork.
+
+**Dans un pipeline de release**, mettez la signature en **job du même workflow**
+que le build/release (gardé par `environment: signing`, et le job release le
+met en `needs:`) — un tag devient alors *build → approbation → release signée*.
+Ne comptez pas sur un workflow séparé déclenché par `release: published` : une
+Release créée par le `GITHUB_TOKEN` intégré **ne déclenche pas** d'autre workflow.
 
 ### État
 
