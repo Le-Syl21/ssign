@@ -2,10 +2,13 @@ name: Sign Windows release
 
 # Take the Windows binary from a published Release, Authenticode-sign it with
 # ssign itself (the Linux build signs the Windows .exe — dogfooding), and push
-# the signed asset back. Manual + gated: each run performs a real Certum cloud
-# signature, so it waits for the `signing` environment's required reviewers.
+# the signed asset back. Auto-fires when a Release is published, then waits for
+# the `signing` environment's required reviewer to approve (each run performs a
+# real Certum cloud signature). Also runnable manually to re-sign a given tag.
 
 on:
+  release:
+    types: [published]
   workflow_dispatch:
     inputs:
       tag:
@@ -18,6 +21,8 @@ jobs:
     environment: signing        # owner approval + scoped Certum secrets
     permissions:
       contents: write           # to replace the release asset
+    env:
+      TAG: ${{ github.event.release.tag_name || inputs.tag }}
     steps:
       - uses: actions/checkout@v4
 
@@ -31,7 +36,7 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
-          gh release download "${{ inputs.tag }}" -R "$GITHUB_REPOSITORY" \
+          gh release download "$TAG" -R "$GITHUB_REPOSITORY" \
             --pattern 'ssign-windows-x86_64.zip' --dir dl
           unzip -o dl/ssign-windows-x86_64.zip -d dl
 
@@ -55,5 +60,5 @@ jobs:
           GH_TOKEN: ${{ github.token }}
         run: |
           (cd dl && zip -j ../ssign-windows-x86_64.zip ssign.exe)
-          gh release upload "${{ inputs.tag }}" ssign-windows-x86_64.zip \
+          gh release upload "$TAG" ssign-windows-x86_64.zip \
             -R "$GITHUB_REPOSITORY" --clobber
