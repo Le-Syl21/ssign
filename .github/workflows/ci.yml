@@ -155,11 +155,17 @@ jobs:
     runs-on: ubuntu-latest
     environment: signing
     steps:
-      - uses: actions/checkout@v7
-      - uses: dtolnay/rust-toolchain@stable
-
-      - name: Build ssign
-        run: cargo build --release
+      # Sign ourselves with the exact Linux binary just built in this run — no
+      # recompile, and it dogfoods the very version being released.
+      - name: Download the freshly built Linux ssign
+        uses: actions/download-artifact@v8
+        with:
+          name: ssign-linux-x86_64
+          path: linux
+      - name: Install ssign
+        run: |
+          tar xzf linux/ssign-linux-x86_64.tar.gz -C linux
+          sudo install -m755 linux/ssign /usr/local/bin/ssign
 
       - name: Download the Windows artifact
         uses: actions/download-artifact@v8
@@ -173,7 +179,7 @@ jobs:
           CERTUM_OTP: ${{ secrets.CERTUM_OTP }}
         run: |
           unzip -o dl/ssign-windows-x86_64.zip -d dl
-          ./target/release/ssign --verbose \
+          ssign --verbose \
             -n "ssign" -u "https://github.com/${{ github.repository }}" \
             dl/ssign.exe
           sudo apt-get update -qq && sudo apt-get install -y osslsigncode
