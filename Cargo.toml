@@ -2,13 +2,27 @@
 name = "ssign"
 version = "0.1.0"
 edition = "2021"
-description = "Cross-platform CLI to Authenticode-sign Windows binaries (exe/dll/msi) with a Certum SimplySign cloud certificate — no GUI, no vendor stack."
+rust-version = "1.74"
+description = "Cross-platform CLI to Authenticode-sign Windows binaries with a Certum SimplySign cloud certificate — no GUI, no vendor stack."
 license = "MIT"
 repository = "https://github.com/Le-Syl21/ssign"
+homepage = "https://github.com/Le-Syl21/ssign"
+documentation = "https://docs.rs/ssign"
+readme = "README.md"
+keywords = ["authenticode", "code-signing", "certum", "simplysign", "windows"]
+categories = ["command-line-utilities", "cryptography"]
+# Keep test fixtures (big binaries + a throwaway self-signed key) and CI config
+# out of the published crate. src/certs/*.der is embedded code, so it stays.
+exclude = ["tests/fixtures/*", ".github/*"]
 
 [[bin]]
 name = "ssign"
 path = "src/main.rs"
+
+[package.metadata.docs.rs]
+# ssign is a binary crate; still let docs.rs build the crate docs cleanly.
+all-features = true
+rustdoc-args = ["--cfg", "docsrs"]
 
 [dependencies]
 clap = { version = "4", features = ["derive", "env", "wrap_help"] }
