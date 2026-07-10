@@ -3,25 +3,100 @@ name: CI
 on:
   push:
     branches: [main]
+    tags: ['v*']
   pull_request:
   workflow_dispatch:
+
+env:
+  CARGO_TERM_COLOR: always
 
 jobs:
   build:
     strategy:
+      fail-fast: false
       matrix:
-        os: [ubuntu-latest, windows-latest, macos-latest]
-    runs-on: ${{ matrix.os }}
-    steps:
-      - uses: actions/checkout@v4
-      - name: Build
-        run: cargo build --release
-      - name: Check help runs
-        run: cargo run --release -- --help
+        include:
+          - os: ubuntu-24.04
+            target: x86_64-unknown-linux-gnu
+            label: linux-x86_64
+            lint: true
+          - os: ubuntu-24.04
+            target: aarch64-unknown-linux-gnu
+            label: linux-aarch64
+            cross: true
+          - os: macos-latest
+            target: aarch64-apple-darwin
+            label: macos-aarch64
+          - os: macos-latest
+            target: x86_64-apple-darwin
+            label: macos-x86_64
+          - os: windows-latest
+            target: x86_64-pc-windows-msvc
+            label: windows-x86_64
 
-  lint:
-    runs-on: ubuntu-latest
+    runs-on: ${{ matrix.os }}
+    name: ${{ matrix.label }}
+
     steps:
       - uses: actions/checkout@v4
-      - run: cargo fmt --check
-      - run: cargo clippy -- -D warnings
+
+      - name: Install Rust
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: ${{ matrix.target }}
+          components: ${{ matrix.lint && 'rustfmt, clippy' || '' }}
+
+      - uses: Swatinem/rust-cache@v2
+        with:
+          key: ${{ matrix.os }}-${{ matrix.target }}
+
+      # aarch64 Linux is cross-compiled from x86_64 (hosted arm runners are too
+      # unstable for releases); cross-rs runs the build in a Docker image that
+      # ships the aarch64 toolchain. ssign is pure Rust + rustls, so no system
+      # packages are needed on any native target.
+      - name: Install cross
+        if: matrix.cross
+        run: cargo install cross --locked --version 0.2.5
+
+      # --- Lint (linux-x86_64 only) ---
+      - name: Check formatting
+        if: matrix.lint
+        run: cargo fmt --check
+
+      - name: Clippy
+        if: matrix.lint
+        run: cargo clippy --release --target ${{ matrix.target }} -- -D warnings
+
+      # --- Build ---
+      - name: Set macOS deployment target
+        if: runner.os == 'macOS'
+        run: echo "MACOSX_DEPLOYMENT_TARGET=11.0" >> "$GITHUB_ENV"
+
+      - name: Build (native)
+        if: '!matrix.cross'
+        run: cargo build --release --target ${{ matrix.target }}
+
+      - name: Build (cross)
+        if: matrix.cross
+        run: cross build --release --target ${{ matrix.target }}
+
+      # Skip tests for cross-compiled targets (no aarch64 binary runs on the
+      # x86_64 host) and the macOS x86_64 build (Apple-silicon runner).
+      - name: Run tests
+        if: matrix.target != 'x86_64-apple-darwin' && !matrix.cross
+        run: cargo test --release --target ${{ matrix.target }}
+
+      # --- Package ---
+      - name: Package (Unix)
+        if: runner.os != 'Windows'
+        run: tar czf ssign-${{ matrix.label }}.tar.gz -C target/${{ matrix.target }}/release ssign
+
+      - name: Package (Windows)
+        if: runner.os == 'Windows'
+        run: Compress-Archive -Path target/${{ matrix.target }}/release/ssign.exe -DestinationPath ssign-${{ matrix.label }}.zip
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: ssign-${{ matrix.label }}
+          path: ssign-${{ matrix.label }}.*
