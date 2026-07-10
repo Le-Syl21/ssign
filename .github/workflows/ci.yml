@@ -2,7 +2,6 @@ name: CI
 
 on:
   push:
-    branches: [main]
     tags: ['v*']
   pull_request:
   workflow_dispatch:
@@ -146,8 +145,51 @@ jobs:
           name: ssign-${{ matrix.label }}
           path: ssign-${{ matrix.label }}.*
 
-  release:
+  # Sign the Windows binary with ssign itself (the Linux runner signs the Windows
+  # .exe — dogfooding). Gated by the `signing` environment: the run pauses for
+  # the owner's approval before it can read the Certum secrets and sign, and the
+  # release below waits for it — so a tag becomes: build → approve → signed release.
+  sign-windows:
     needs: build
+    if: startsWith(github.ref, 'refs/tags/v')
+    runs-on: ubuntu-latest
+    environment: signing
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+
+      - name: Build ssign
+        run: cargo build --release
+
+      - name: Download the Windows artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: ssign-windows-x86_64
+          path: dl
+
+      - name: Sign the Windows binary with ssign (via Certum)
+        env:
+          CERTUM_EMAIL: ${{ secrets.CERTUM_EMAIL }}
+          CERTUM_OTP: ${{ secrets.CERTUM_OTP }}
+        run: |
+          unzip -o dl/ssign-windows-x86_64.zip -d dl
+          ./target/release/ssign --verbose \
+            -n "ssign" -u "https://github.com/${{ github.repository }}" \
+            dl/ssign.exe
+          sudo apt-get update -qq && sudo apt-get install -y osslsigncode
+          osslsigncode verify dl/ssign.exe 2>&1 | tee verify.txt || true
+          grep -q "Calculated message digest" verify.txt
+          (cd dl && rm -f ssign-windows-x86_64.zip && zip -j ssign-windows-x86_64.zip ssign.exe)
+
+      - name: Re-upload the signed Windows artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: ssign-windows-x86_64
+          path: dl/ssign-windows-x86_64.zip
+          overwrite: true
+
+  release:
+    needs: [build, sign-windows]
     if: startsWith(github.ref, 'refs/tags/v')
     runs-on: ubuntu-24.04
     permissions:
@@ -156,16 +198,17 @@ jobs:
       - uses: actions/checkout@v4
       - uses: dtolnay/rust-toolchain@stable
 
+      # Download outside the repo working tree so `cargo publish` sees a clean tree.
       - name: Download all artifacts
         uses: actions/download-artifact@v4
         with:
-          path: artifacts
+          path: ${{ runner.temp }}/artifacts
 
       - name: Create GitHub Release
         uses: softprops/action-gh-release@v2
         with:
           generate_release_notes: true
-          files: artifacts/**/*
+          files: ${{ runner.temp }}/artifacts/**/*
 
       - name: Publish to crates.io
         env:
