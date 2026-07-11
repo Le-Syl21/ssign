@@ -1,0 +1,33 @@
+[package]
+name = "ssign-core"
+version = "0.1.0"
+edition = "2021"
+description = "The Certum SimplySign cloud-signing pipeline behind ssign: OAuth login, card/cert fetch, remote signature, and local Authenticode/PKCS#7 assembly — the reusable half shared by the ssign CLI and the ssign-pkcs11 module."
+license = "MIT"
+repository = "https://github.com/Le-Syl21/ssign"
+homepage = "https://github.com/Le-Syl21/ssign"
+documentation = "https://docs.rs/ssign-core"
+readme = "../README.md"
+keywords = ["authenticode", "code-signing", "certum", "simplysign", "pkcs11"]
+categories = ["cryptography", "authentication"]
+# Test fixtures (big binaries + a throwaway self-signed key) stay out of the
+# published crate; src/certs/*.der is embedded code, so it stays.
+exclude = ["tests/fixtures/*"]
+
+[dependencies]
+anyhow = "1"
+base32 = "0.5"
+hmac = "0.12"
+sha1 = "0.10"
+sha2 = "0.10"
+reqwest = { version = "0.12", default-features = false, features = ["blocking", "json", "cookies", "multipart", "rustls-tls"] }
+serde_json = "1"
+regex = "1"
+hex = "0.4"
+cfb = "0.10"
+uuid = "1"
+x509-cert = "0.2"
+der = { version = "0.7", features = ["pem"] }
+
+[dev-dependencies]
+rsa = { version = "0.9", features = ["sha2", "pem"] }

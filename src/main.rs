@@ -1,19 +1,10 @@
 //! ssign — Authenticode-sign Windows binaries with a Certum SimplySign cloud cert.
 //!
-//! The whole signing pipeline is plain HTTPS against Certum's cloud plus local
-//! Authenticode/PKCS#7 assembly, so it runs on Linux, macOS and Windows alike —
-//! you do NOT need Windows to sign a Windows binary.
-#![allow(dead_code)] // pipeline modules are stubs until each step lands
+//! This is the command-line front end; the signing pipeline itself lives in the
+//! `ssign` library crate ([`auth`], [`card`], [`sign`], [`authenticode`], …) so
+//! it can be shared with the `ssign-pkcs11` module.
 
-mod asn1;
-mod auth;
-mod authenticode;
-mod card;
-mod client;
-mod msi;
-mod otp;
-mod sign;
-mod timestamp;
+use ssign_core::{auth, authenticode, card, client, otp, sign, timestamp};
 
 use anyhow::{bail, Context, Result};
 use clap::Parser;

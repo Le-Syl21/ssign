@@ -1,0 +1,18 @@
+[package]
+name = "ssign-pkcs11"
+version = "0.1.0"
+edition = "2021"
+description = "PKCS#11 module exposing a Certum SimplySign cloud key to osslsigncode/signtool for every Authenticode format."
+license = "MIT"
+repository = "https://github.com/Le-Syl21/ssign"
+publish = false
+
+[lib]
+crate-type = ["cdylib"]
+
+[dependencies]
+ssign-core = { path = "../ssign-core" }
+# `custom-function-list` drops native-pkcs11's built-in C_GetFunctionList so we
+# can export our own and register the ssign backend.
+native-pkcs11 = { version = "0.2.27", features = ["custom-function-list"] }
+native-pkcs11-traits = "0.2.27"
