@@ -3,7 +3,7 @@ members = ["ssign-core", "ssign-pkcs11"]
 
 [package]
 name = "ssign"
-version = "0.1.0"
+version = "0.1.1"
 edition = "2021"
 description ="Cross-platform CLI to Authenticode-sign Windows binaries with a Certum SimplySign cloud certificate — no GUI, no vendor stack."
 license = "MIT"
@@ -20,6 +20,6 @@ name = "ssign"
 path = "src/main.rs"
 
 [dependencies]
-ssign-core = { version = "0.1.0", path = "ssign-core" }
+ssign-core = { version = "0.1.1", path = "ssign-core" }
 clap = { version = "4", features = ["derive", "env", "wrap_help"] }
 anyhow = "1"
