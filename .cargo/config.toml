@@ -1,0 +1,9 @@
+# native-pkcs11 declares a `cdylib` target that cargo also builds as a side
+# artifact. With the `custom-function-list` feature its `C_GetFunctionList` is
+# left for the downstream module (ssign-pkcs11) to define, so that *standalone*
+# cdylib has one unresolved symbol. Unix linkers tolerate it in a cdylib; the
+# MSVC linker rejects it. We never ship that stray library — only our own
+# ssign_pkcs11.dll, which defines the symbol and links cleanly — so allow the
+# unresolved external on Windows and let the unused artifact link anyway.
+[target.x86_64-pc-windows-msvc]
+rustflags = ["-C", "link-args=/FORCE:UNRESOLVED"]
