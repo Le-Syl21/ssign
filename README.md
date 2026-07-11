@@ -43,6 +43,8 @@ flowchart TD
 - [Secure signing with owner approval](#secure-signing-with-owner-approval)
 - [Status](#status)
 
+> How the cloud protocol works: [`docs/simplysign-protocol.md`](docs/simplysign-protocol.md).
+
 ### What it does — and doesn't
 
 | ✅ Does | ❌ Does not (yet) |
