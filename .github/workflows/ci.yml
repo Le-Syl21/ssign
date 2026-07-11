@@ -71,13 +71,15 @@ jobs:
         if: runner.os == 'macOS'
         run: echo "MACOSX_DEPLOYMENT_TARGET=11.0" >> "$GITHUB_ENV"
 
+      # Build the CLI and the PKCS#11 module. The module isn't a dependency of
+      # the binary, so it has to be named explicitly or it won't be built.
       - name: Build (native)
         if: '!matrix.cross'
-        run: cargo build --release --target ${{ matrix.target }}
+        run: cargo build --release --target ${{ matrix.target }} -p ssign -p ssign-pkcs11
 
       - name: Build (cross)
         if: matrix.cross
-        run: cross build --release --target ${{ matrix.target }}
+        run: cross build --release --target ${{ matrix.target }} -p ssign -p ssign-pkcs11
 
       # Skip tests for cross-compiled targets (no aarch64 binary runs on the
       # x86_64 host) and the macOS x86_64 build (Apple-silicon runner).
@@ -115,17 +117,21 @@ jobs:
         run: |
           codesign --force --options runtime --timestamp \
             --sign "Developer ID Application: Sylvain Gargasson ($APPLE_TEAM_ID)" \
-            target/${{ matrix.target }}/release/ssign
+            target/${{ matrix.target }}/release/ssign \
+            target/${{ matrix.target }}/release/libssign_pkcs11.dylib
 
-      - name: Notarize binary (macOS, tags only)
+      - name: Notarize (macOS, tags only)
         if: runner.os == 'macOS' && startsWith(github.ref, 'refs/tags/v')
         env:
           APPLE_ID: ${{ secrets.APPLE_ID }}
           APPLE_ID_PASSWORD: ${{ secrets.APPLE_ID_PASSWORD }}
           APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
         run: |
-          ditto -c -k --keepParent \
-            target/${{ matrix.target }}/release/ssign "$RUNNER_TEMP/ssign.zip"
+          mkdir -p "$RUNNER_TEMP/notarize"
+          cp target/${{ matrix.target }}/release/ssign \
+             target/${{ matrix.target }}/release/libssign_pkcs11.dylib \
+             "$RUNNER_TEMP/notarize/"
+          ditto -c -k --keepParent "$RUNNER_TEMP/notarize" "$RUNNER_TEMP/ssign.zip"
           xcrun notarytool submit "$RUNNER_TEMP/ssign.zip" \
             --apple-id "$APPLE_ID" --password "$APPLE_ID_PASSWORD" \
             --team-id "$APPLE_TEAM_ID" --wait
@@ -144,6 +150,24 @@ jobs:
         with:
           name: ssign-${{ matrix.label }}
           path: ssign-${{ matrix.label }}.*
+
+      # --- Package the PKCS#11 module (its own artifact) ---
+      - name: Package module (Unix)
+        if: runner.os != 'Windows'
+        run: |
+          lib=libssign_pkcs11.so
+          [ "$RUNNER_OS" = macOS ] && lib=libssign_pkcs11.dylib
+          tar czf ssign-pkcs11-${{ matrix.label }}.tar.gz -C target/${{ matrix.target }}/release "$lib"
+
+      - name: Package module (Windows)
+        if: runner.os == 'Windows'
+        run: Compress-Archive -Path target/${{ matrix.target }}/release/ssign_pkcs11.dll -DestinationPath ssign-pkcs11-${{ matrix.label }}.zip
+
+      - name: Upload module artifact
+        uses: actions/upload-artifact@v7
+        with:
+          name: ssign-pkcs11-${{ matrix.label }}
+          path: ssign-pkcs11-${{ matrix.label }}.*
 
   # Sign the Windows binary with ssign itself (the Linux runner signs the Windows
   # .exe — dogfooding). Gated by the `signing` environment: the run pauses for
@@ -167,31 +191,47 @@ jobs:
           tar xzf linux/ssign-linux-x86_64.tar.gz -C linux
           sudo install -m755 linux/ssign /usr/local/bin/ssign
 
-      - name: Download the Windows artifact
+      - name: Download the Windows CLI artifact
         uses: actions/download-artifact@v8
         with:
           name: ssign-windows-x86_64
           path: dl
+      - name: Download the Windows module artifact
+        uses: actions/download-artifact@v8
+        with:
+          name: ssign-pkcs11-windows-x86_64
+          path: dl
 
-      - name: Sign the Windows binary with ssign (via Certum)
+      - name: Sign the Windows binary + module with ssign (via Certum)
         env:
           CERTUM_EMAIL: ${{ secrets.CERTUM_EMAIL }}
           CERTUM_OTP: ${{ secrets.CERTUM_OTP }}
         run: |
           unzip -o dl/ssign-windows-x86_64.zip -d dl
+          unzip -o dl/ssign-pkcs11-windows-x86_64.zip -d dl
+          # One Certum login signs both the CLI and the module.
           ssign --verbose \
             -n "ssign" -u "https://github.com/${{ github.repository }}" \
-            dl/ssign.exe
+            dl/ssign.exe dl/ssign_pkcs11.dll
           sudo apt-get update -qq && sudo apt-get install -y osslsigncode
-          osslsigncode verify dl/ssign.exe 2>&1 | tee verify.txt || true
-          grep -q "Calculated message digest" verify.txt
+          for f in ssign.exe ssign_pkcs11.dll; do
+            osslsigncode verify "dl/$f" 2>&1 | tee "verify-$f.txt" || true
+            grep -q "Calculated message digest" "verify-$f.txt"
+          done
           (cd dl && rm -f ssign-windows-x86_64.zip && zip -j ssign-windows-x86_64.zip ssign.exe)
+          (cd dl && rm -f ssign-pkcs11-windows-x86_64.zip && zip -j ssign-pkcs11-windows-x86_64.zip ssign_pkcs11.dll)
 
-      - name: Re-upload the signed Windows artifact
+      - name: Re-upload the signed Windows CLI
         uses: actions/upload-artifact@v7
         with:
           name: ssign-windows-x86_64
           path: dl/ssign-windows-x86_64.zip
+          overwrite: true
+      - name: Re-upload the signed Windows module
+        uses: actions/upload-artifact@v7
+        with:
+          name: ssign-pkcs11-windows-x86_64
+          path: dl/ssign-pkcs11-windows-x86_64.zip
           overwrite: true
 
   release:
@@ -220,10 +260,25 @@ jobs:
         env:
           CARGO_REGISTRY_TOKEN: ${{ secrets.CARGO_TOKEN }}
         run: |
-          if cargo publish 2>&1 | tee /tmp/publish.log; then
-            echo "published"
-          elif grep -q "already exists" /tmp/publish.log; then
-            echo "this version is already on crates.io — nothing to do"
-          else
-            exit 1
-          fi
+          # Publish a crate, tolerating "already exists" (re-tag) but failing on
+          # any other error. ssign-pkcs11 is publish=false, so it's skipped.
+          publish() {
+            if cargo publish -p "$1" 2>&1 | tee /tmp/publish.log; then
+              return 0
+            elif grep -q "already exists" /tmp/publish.log; then
+              echo "$1: this version is already on crates.io — nothing to do"
+              return 0
+            else
+              return 1
+            fi
+          }
+          # The library first; the binary depends on it.
+          publish ssign-core || exit 1
+          # Wait for the index to catch up before publishing the dependent binary.
+          for i in $(seq 1 10); do
+            publish ssign && exit 0
+            echo "index not ready, retrying in 30s… ($i/10)"
+            sleep 30
+          done
+          echo "failed to publish ssign" >&2
+          exit 1
