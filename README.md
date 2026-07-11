@@ -76,16 +76,19 @@ your shell history or the process list.
 
 ```bash
 # Manual, local — paste the current code from your app:
-ssign -e you@example.com -T 123456 app.exe
+ssign --allow-insecure-timestamp -e you@example.com -T 123456 app.exe
 
 # Automation — seed once, then hands-off:
 export CERTUM_EMAIL=you@example.com
 export CERTUM_OTP=YOUR_BASE32_TOTP_SEED       # or the full otpauth:// URI
-ssign app.exe installer.dll driver.sys
+ssign --allow-insecure-timestamp app.exe installer.dll driver.sys
 ```
 
-Files are signed **in place** by default (`--backup` keeps a `.orig`; `-o <DIR>`
-writes elsewhere). See `ssign --help` for every option.
+Files are signed **in place** by default (`--backup` keeps an immutable
+`<file>.orig`; `-o <DIR>` writes elsewhere). The Certum TSA is currently HTTP
+only, so timestamping requires an explicit `--allow-insecure-timestamp`
+acknowledgement; use an HTTPS TSA with `--timestamp-url` whenever available.
+See `ssign --help` for every option.
 
 ### ⚠️ Security: the OTP is a long-lived secret
 
@@ -120,7 +123,7 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - run: cargo install ssign
-      - run: ssign dist/*.exe
+      - run: ssign --allow-insecure-timestamp dist/*.exe
         env:
           CERTUM_EMAIL: ${{ secrets.CERTUM_EMAIL }}
           CERTUM_OTP:   ${{ secrets.CERTUM_OTP }}
@@ -229,16 +232,19 @@ touche votre historique shell ni la liste des processus.
 
 ```bash
 # Manuel, en local — collez le code courant de votre appli :
-ssign -e vous@example.com -T 123456 app.exe
+ssign --allow-insecure-timestamp -e vous@example.com -T 123456 app.exe
 
 # Automatisation — le seed une fois, puis sans intervention :
 export CERTUM_EMAIL=vous@example.com
 export CERTUM_OTP=VOTRE_SEED_TOTP_BASE32       # ou l'URI otpauth:// complète
-ssign app.exe installeur.dll pilote.sys
+ssign --allow-insecure-timestamp app.exe installeur.dll pilote.sys
 ```
 
-Les fichiers sont signés **sur place** par défaut (`--backup` garde un `.orig` ;
-`-o <DIR>` écrit ailleurs). Voir `ssign --help` pour toutes les options.
+Les fichiers sont signés **sur place** par défaut (`--backup` garde un
+`<fichier>.orig` immuable ; `-o <DIR>` écrit ailleurs). Le TSA Certum ne sert
+actuellement que HTTP, donc l'horodatage exige l'accusé explicite
+`--allow-insecure-timestamp` ; utilisez un TSA HTTPS avec `--timestamp-url`
+dès que possible. Voir `ssign --help` pour toutes les options.
 
 ### ⚠️ Sécurité : l'OTP est un secret à longue durée
 
@@ -274,7 +280,7 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - run: cargo install ssign
-      - run: ssign dist/*.exe
+      - run: ssign --allow-insecure-timestamp dist/*.exe
         env:
           CERTUM_EMAIL: ${{ secrets.CERTUM_EMAIL }}
           CERTUM_OTP:   ${{ secrets.CERTUM_OTP }}

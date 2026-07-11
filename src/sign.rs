@@ -54,7 +54,7 @@ pub fn request(client: &Client, token: &str, card: &Card, sha256: &[u8; 32]) -> 
         .as_array()
         .and_then(|a| a.first())
         .and_then(|o| o.as_object())
-        .and_then(|m| m.values().next())
+        .and_then(|m| m.get(&digest_hex))
         .and_then(|v| v.as_str())
         .with_context(|| {
             let snip: String = String::from_utf8_lossy(&resp).chars().take(300).collect();

@@ -180,6 +180,7 @@ jobs:
         run: |
           unzip -o dl/ssign-windows-x86_64.zip -d dl
           ssign --verbose \
+            --allow-insecure-timestamp \
             -n "ssign" -u "https://github.com/${{ github.repository }}" \
             dl/ssign.exe
           sudo apt-get update -qq && sudo apt-get install -y osslsigncode

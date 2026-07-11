@@ -85,7 +85,14 @@ pub fn pe_hash(pe: &[u8]) -> Result<[u8; 32]> {
     let (cert_start, cert_end) = if l.cert_table_size == 0 {
         (pe.len(), pe.len())
     } else {
-        (l.cert_table_off, l.cert_table_off + l.cert_table_size)
+        let cert_end = l
+            .cert_table_off
+            .checked_add(l.cert_table_size)
+            .context("certificate table length overflows")?;
+        if l.cert_table_off > pe.len() || cert_end > pe.len() {
+            bail!("certificate table lies outside the PE file");
+        }
+        (l.cert_table_off, cert_end)
     };
     let mut h = Sha256::new();
     h.update(&pe[..l.checksum_off]);
@@ -415,6 +422,20 @@ mod tests {
         assert_eq!(utc_time(1783667881), "260710071801Z");
     }
 
+    #[test]
+    fn rejects_certificate_table_outside_the_file() {
+        let mut pe = vec![0u8; 0x200];
+        pe[..2].copy_from_slice(b"MZ");
+        pe[0x3c..0x40].copy_from_slice(&(0x80u32).to_le_bytes());
+        pe[0x80..0x84].copy_from_slice(b"PE\0\0");
+        // Optional header starts at 0x98; this is a PE32 image.
+        pe[0x98..0x9a].copy_from_slice(&[0x0b, 0x01]);
+        // Security-directory entry: offset and length are file offsets, not RVAs.
+        pe[0x118..0x11c].copy_from_slice(&(0xffff_fff0u32).to_le_bytes());
+        pe[0x11c..0x120].copy_from_slice(&(0x20u32).to_le_bytes());
+        assert!(pe_hash(&pe).is_err());
+    }
+
     /// End-to-end assembly check with a local self-signed key: prepare -> sign
     /// the digest ourselves (exactly as Certum would) -> finalize -> write a PE.
     /// Run with `cargo test -- --ignored`, then `osslsigncode verify` the output.
@@ -440,7 +461,7 @@ mod tests {
         let signature = key
             .sign(Pkcs1v15Sign::new::<Sha256>(), &prep.to_be_signed)
             .unwrap();
-        let ts = crate::timestamp::fetch("http://time.certum.pl/", &signature).ok();
+        let ts = crate::timestamp::fetch("http://time.certum.pl/", &signature, true).ok();
         let signed = finalize(prep, &signature, cert_der, ts.as_deref()).unwrap();
         std::fs::write("/tmp/ssign_selftest.exe", &signed).unwrap();
         assert!(pe_layout(&signed).unwrap().cert_table_size > 0);

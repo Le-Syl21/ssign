@@ -17,6 +17,8 @@ mod timestamp;
 
 use anyhow::{bail, Context, Result};
 use clap::Parser;
+use std::ffi::OsString;
+use std::io::Write;
 use std::path::PathBuf;
 use std::time::{SystemTime, UNIX_EPOCH};
 
@@ -51,6 +53,11 @@ struct Cli {
     /// RFC3161 timestamp authority.
     #[arg(long, value_name = "URL", default_value = "http://time.certum.pl/")]
     timestamp_url: String,
+
+    /// Permit an HTTP timestamp authority after explicitly acknowledging its
+    /// transport risk. Prefer HTTPS whenever the authority supports it.
+    #[arg(long)]
+    allow_insecure_timestamp: bool,
 
     /// Signature description embedded in the file.
     #[arg(short = 'n', long, value_name = "TEXT")]
@@ -87,13 +94,18 @@ Every flag also reads an environment variable (CERTUM_EMAIL / CERTUM_OTP /
 CERTUM_TOKEN). Prefer the env vars for secrets — a value passed on the command
 line is visible in your shell history and in the process list.
 
+TIMESTAMPING
+  Certum's public TSA currently serves RFC3161 over HTTP. Passing
+  --allow-insecure-timestamp explicitly acknowledges that transport risk. Use
+  an HTTPS TSA with --timestamp-url whenever one is available.
+
 EXAMPLES
   # manual, on your own machine (paste the current code):
-  ssign -e you@example.com -T 123456 app.exe
+  ssign --allow-insecure-timestamp -e you@example.com -T 123456 app.exe
 
   # CI / automation (seed once, then unattended):
   export CERTUM_EMAIL=you@example.com CERTUM_OTP=BASE32SEED
-  ssign app.exe installer.msi driver.sys
+  ssign --allow-insecure-timestamp app.exe installer.msi driver.sys
 ";
 
 fn main() -> Result<()> {
@@ -127,6 +139,12 @@ fn resolve_code(otp: &Otp) -> Result<String> {
 
 fn run(cli: &Cli, otp: Otp) -> Result<()> {
     let code = resolve_code(&otp)?;
+    timestamp::validate_url(&cli.timestamp_url, cli.allow_insecure_timestamp)?;
+    if cli.timestamp_url.starts_with("http://") {
+        eprintln!(
+            "warning: timestamping over HTTP was explicitly allowed; a network attacker can disrupt the timestamp"
+        );
+    }
 
     // 1. authenticate (once for the whole batch).
     if cli.verbose {
@@ -163,7 +181,7 @@ fn run(cli: &Cli, otp: Otp) -> Result<()> {
             None
         } else {
             Some(
-                timestamp::fetch(&cli.timestamp_url, &signature)
+                timestamp::fetch(&cli.timestamp_url, &signature, cli.allow_insecure_timestamp)
                     .with_context(|| format!("timestamping {}", file.display()))?,
             )
         };
@@ -171,11 +189,117 @@ fn run(cli: &Cli, otp: Otp) -> Result<()> {
             .with_context(|| format!("assembling signature for {}", file.display()))?;
 
         let out = output_path(file, cli.output_dir.as_deref())?;
-        if cli.backup && out == *file {
-            std::fs::write(file.with_extension("orig"), &pe).context("writing backup")?;
-        }
-        std::fs::write(&out, &signed).with_context(|| format!("writing {}", out.display()))?;
+        write_signed_file(file, &out, &pe, &signed, cli.backup)?;
         println!("signed {}", out.display());
+    }
+    Ok(())
+}
+
+/// Write a signed output safely: an in-place backup is never overwritten, and
+/// the completed output is swapped in only after its bytes have reached disk.
+fn write_signed_file(
+    input: &std::path::Path,
+    out: &std::path::Path,
+    original: &[u8],
+    signed: &[u8],
+    backup: bool,
+) -> Result<()> {
+    if backup && out == input {
+        let mut backup_path = OsString::from(input.as_os_str());
+        backup_path.push(".orig");
+        write_new_file_atomically(&PathBuf::from(backup_path), original)
+            .context("writing backup (refusing to overwrite an existing .orig file)")?;
+    }
+    write_file_atomically(out, signed).with_context(|| format!("writing {}", out.display()))
+}
+
+fn temp_file_path(path: &std::path::Path, attempt: u8) -> Result<PathBuf> {
+    let parent = path.parent().unwrap_or_else(|| std::path::Path::new("."));
+    let name = path.file_name().context("output has no file name")?;
+    let nonce = SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .context("system clock before 1970")?
+        .as_nanos();
+    let mut temp_name = OsString::from(".");
+    temp_name.push(name);
+    temp_name.push(format!(
+        ".ssign-{}-{nonce}-{attempt}.tmp",
+        std::process::id()
+    ));
+    Ok(parent.join(temp_name))
+}
+
+fn write_temp_file(path: &std::path::Path, bytes: &[u8]) -> Result<PathBuf> {
+    for attempt in 0..10 {
+        let temp = temp_file_path(path, attempt)?;
+        match std::fs::OpenOptions::new()
+            .write(true)
+            .create_new(true)
+            .open(&temp)
+        {
+            Ok(mut file) => {
+                if let Err(err) = file.write_all(bytes).and_then(|_| file.sync_all()) {
+                    let _ = std::fs::remove_file(&temp);
+                    return Err(err).context("writing temporary output");
+                }
+                return Ok(temp);
+            }
+            Err(err) if err.kind() == std::io::ErrorKind::AlreadyExists => continue,
+            Err(err) => return Err(err).context("creating temporary output"),
+        }
+    }
+    bail!("could not allocate a temporary output file")
+}
+
+fn write_new_file_atomically(path: &std::path::Path, bytes: &[u8]) -> Result<()> {
+    let temp = write_temp_file(path, bytes)?;
+    // A same-directory hard link publishes the complete temp file atomically
+    // and fails if a previous backup exists; it never replaces user data.
+    let result = std::fs::hard_link(&temp, path).context("publishing new file");
+    let _ = std::fs::remove_file(&temp);
+    result
+}
+
+fn write_file_atomically(path: &std::path::Path, bytes: &[u8]) -> Result<()> {
+    let permissions = std::fs::metadata(path).ok().map(|m| m.permissions());
+    let temp = write_temp_file(path, bytes)?;
+    if let Some(permissions) = permissions {
+        std::fs::set_permissions(&temp, permissions).context("preserving output permissions")?;
+    }
+    let result = replace_file_atomically(&temp, path);
+    if result.is_err() {
+        let _ = std::fs::remove_file(&temp);
+    }
+    result
+}
+
+#[cfg(not(windows))]
+fn replace_file_atomically(temp: &std::path::Path, path: &std::path::Path) -> Result<()> {
+    std::fs::rename(temp, path).context("replacing output atomically")
+}
+
+#[cfg(windows)]
+fn replace_file_atomically(temp: &std::path::Path, path: &std::path::Path) -> Result<()> {
+    use std::iter::once;
+    use std::os::windows::ffi::OsStrExt;
+
+    extern "system" {
+        fn MoveFileExW(existing: *const u16, new: *const u16, flags: u32) -> i32;
+    }
+    const MOVEFILE_REPLACE_EXISTING: u32 = 0x1;
+    const MOVEFILE_WRITE_THROUGH: u32 = 0x8;
+
+    let source: Vec<u16> = temp.as_os_str().encode_wide().chain(once(0)).collect();
+    let target: Vec<u16> = path.as_os_str().encode_wide().chain(once(0)).collect();
+    if unsafe {
+        MoveFileExW(
+            source.as_ptr(),
+            target.as_ptr(),
+            MOVEFILE_REPLACE_EXISTING | MOVEFILE_WRITE_THROUGH,
+        )
+    } == 0
+    {
+        return Err(std::io::Error::last_os_error()).context("replacing output atomically");
     }
     Ok(())
 }
@@ -190,5 +314,34 @@ fn output_path(file: &std::path::Path, output_dir: Option<&std::path::Path>) -> 
             let name = file.file_name().context("input has no file name")?;
             Ok(dir.join(name))
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn in_place_backup_is_preserved_and_never_overwritten() {
+        let dir = std::env::temp_dir().join(format!(
+            "ssign-main-test-{}",
+            SystemTime::now()
+                .duration_since(UNIX_EPOCH)
+                .unwrap()
+                .as_nanos()
+        ));
+        std::fs::create_dir(&dir).unwrap();
+        let input = dir.join("app.exe");
+        std::fs::write(&input, b"original").unwrap();
+
+        write_signed_file(&input, &input, b"original", b"signed", true).unwrap();
+        assert_eq!(std::fs::read(&input).unwrap(), b"signed");
+        assert_eq!(
+            std::fs::read(dir.join("app.exe.orig")).unwrap(),
+            b"original"
+        );
+        assert!(write_signed_file(&input, &input, b"signed", b"new", true).is_err());
+
+        std::fs::remove_dir_all(dir).unwrap();
     }
 }

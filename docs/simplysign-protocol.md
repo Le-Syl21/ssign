@@ -14,7 +14,8 @@ suggested, so nobody has to walk them again.
 
 **Host:** `cloudsign.webnotarius.pl` (all calls).
 **Timestamp authority:** `http://time.certum.pl/` (RFC 3161, standard, unrelated
-to auth).
+to auth). The endpoint is currently HTTP-only; `ssign` requires an explicit
+`--allow-insecure-timestamp` acknowledgement before using it.
 
 The whole flow is plain HTTPS — there is **no cryptographic activation wall**
 (see [Appendix A](#appendix-a--superseded-hypotheses)). Session control is the
