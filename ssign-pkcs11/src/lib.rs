@@ -19,7 +19,7 @@ use std::error::Error;
 use std::sync::{Arc, Mutex, Once};
 use std::time::{SystemTime, UNIX_EPOCH};
 
-use native_pkcs11::{CK_FUNCTION_LIST_PTR_PTR, CK_RV, CKR_OK};
+use native_pkcs11::{CKR_OK, CK_FUNCTION_LIST_PTR_PTR, CK_RV};
 use native_pkcs11_traits::{
     Backend, Certificate, KeyAlgorithm, KeySearchOptions, PrivateKey, PublicKey, Result,
     SignatureAlgorithm,
