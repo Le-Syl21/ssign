@@ -42,6 +42,7 @@ flowchart TD
 - [GitHub Actions](#github-actions)
 - [Secure signing with owner approval](#secure-signing-with-owner-approval)
 - [Status](#status)
+- [Contributing — formats wanted](#contributing--formats-wanted)
 
 > How the cloud protocol works: [`docs/simplysign-protocol.md`](docs/simplysign-protocol.md).
 
@@ -162,6 +163,23 @@ and an RFC3161 timestamp. **MSI signing is in progress** and not yet enabled.
 Pipeline: `otp` → `auth` (OAuth) → `card` → `sign` (SCS1_ATOM) → `authenticode`
 (hash + PKCS#7) → `timestamp` (RFC3161).
 
+### Contributing — formats wanted
+
+The **PE** path is solid and CI-proven. The rest of the Authenticode surface is
+wide open, and help is very welcome:
+
+- **MSI / MSP / MSM** — in progress; the CFB (OLE2) pre-hash doesn't yet match
+  `osslsigncode`. Notes or a fix here would be gold.
+- **CAB** cabinet archives
+- **CAT** security catalogs
+- **APPX / MSIX** app packages
+- **PowerShell / script** signing (`.ps1`, `.psm1`, `.vbs`, `.js`) via SIP
+
+Each is independent of the cloud plumbing — login, card and signing already work,
+so the task is "hash this container format the Authenticode way, then hand the
+digest to the existing sign path." Open an issue or a PR; happy to point you at
+the relevant module.
+
 ---
 
 ## Français
@@ -173,6 +191,7 @@ Pipeline: `otp` → `auth` (OAuth) → `card` → `sign` (SCS1_ATOM) → `authen
 - [GitHub Actions (FR)](#github-actions-fr)
 - [Signature sécurisée avec accord du propriétaire](#signature-sécurisée-avec-accord-du-propriétaire)
 - [État](#état)
+- [Contribuer — formats recherchés](#contribuer--formats-recherchés)
 
 La signature Authenticode, ce ne sont que des données : hacher le fichier et
 emballer la signature RSA du cloud dans un blob PKCS#7. `ssign` fait tout en
@@ -298,6 +317,23 @@ encore activée.
 
 Pipeline : `otp` → `auth` (OAuth) → `card` → `sign` (SCS1_ATOM) → `authenticode`
 (hash + PKCS#7) → `timestamp` (RFC3161).
+
+### Contribuer — formats recherchés
+
+Le chemin **PE** est solide et prouvé en CI. Le reste de la surface Authenticode
+est grand ouvert, et les coups de main sont les bienvenus :
+
+- **MSI / MSP / MSM** — en cours ; le pré-hash CFB (OLE2) ne correspond pas
+  encore à `osslsigncode`. Des notes ou un correctif ici vaudraient de l'or.
+- Archives **CAB**
+- Catalogues de sécurité **CAT**
+- Packages **APPX / MSIX**
+- Signature **PowerShell / scripts** (`.ps1`, `.psm1`, `.vbs`, `.js`) via SIP
+
+Chacun est indépendant de la plomberie cloud — login, carte et signature
+fonctionnent déjà, donc la tâche est « hasher ce format conteneur à la mode
+Authenticode, puis passer l'empreinte au chemin de signature existant ». Ouvrez
+une issue ou une PR ; je vous oriente volontiers vers le bon module.
 
 ---
 
