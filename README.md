@@ -42,7 +42,9 @@ flowchart TD
 - [GitHub Actions](#github-actions)
 - [Secure signing with owner approval](#secure-signing-with-owner-approval)
 - [Status](#status)
-- [Contributing — formats wanted](#contributing--formats-wanted)
+- [Sign any format — the PKCS#11 module](#sign-any-format--the-pkcs11-module)
+- [Contributing — native formats wanted](#contributing--native-formats-wanted)
+- [Acknowledgements](#acknowledgements)
 
 > How the cloud protocol works: [`docs/simplysign-protocol.md`](docs/simplysign-protocol.md).
 
@@ -163,22 +165,59 @@ and an RFC3161 timestamp. **MSI signing is in progress** and not yet enabled.
 Pipeline: `otp` → `auth` (OAuth) → `card` → `sign` (SCS1_ATOM) → `authenticode`
 (hash + PKCS#7) → `timestamp` (RFC3161).
 
-### Contributing — formats wanted
+### Sign any format — the PKCS#11 module
 
-The **PE** path is solid and CI-proven. The rest of the Authenticode surface is
-wide open, and help is very welcome:
+ssign's own signer covers **PE** (`.exe`/`.dll`/`.sys`/…). For **every** other
+Authenticode format — MSI, CAB, catalog, APPX, PowerShell — ssign also ships a
+**PKCS#11 module** (`ssign-pkcs11`) that hands your Certum cloud key to
+[`osslsigncode`](https://github.com/mtrojnar/osslsigncode), which already knows
+how to hash and package them all. Still no SimplySign Desktop, no p11-kit, no
+smart card — the module talks to the cloud over HTTPS like the rest of ssign.
+
+```sh
+cargo build -p ssign-pkcs11 --release   # → target/release/libssign_pkcs11.so
+
+export CERTUM_EMAIL=you@example.com CERTUM_OTP=BASE32SEED
+osslsigncode sign \
+  -pkcs11module ./target/release/libssign_pkcs11.so \
+  -pkcs11cert 'pkcs11:type=cert' -key 'pkcs11:type=private' \
+  -ac certum-code-signing-2021-ca.pem \
+  -h sha256 -t http://time.certum.pl/ \
+  -in installer.msi -out installer-signed.msi
+```
+
+It reads the same `CERTUM_EMAIL` / `CERTUM_OTP` (or `CERTUM_TOKEN`) as the CLI
+and **caches the cloud session**, so signing many files in a row needs only one
+code. `-ac` embeds the Certum "Code Signing 2021 CA" intermediate so the chain
+verifies. `ssign-pkcs11/tests/sign-all-formats.sh` signs one file of each format
+end to end.
+
+### Contributing — native formats wanted
+
+The module covers every format *today* via osslsigncode. Native, dependency-free
+support in ssign itself (so you need neither osslsigncode nor a PKCS#11 engine)
+is still welcome:
 
 - **MSI / MSP / MSM** — in progress; the CFB (OLE2) pre-hash doesn't yet match
   `osslsigncode`. Notes or a fix here would be gold.
-- **CAB** cabinet archives
-- **CAT** security catalogs
-- **APPX / MSIX** app packages
+- **CAB** cabinet archives, **CAT** security catalogs, **APPX / MSIX** packages
 - **PowerShell / script** signing (`.ps1`, `.psm1`, `.vbs`, `.js`) via SIP
 
 Each is independent of the cloud plumbing — login, card and signing already work,
 so the task is "hash this container format the Authenticode way, then hand the
 digest to the existing sign path." Open an issue or a PR; happy to point you at
 the relevant module.
+
+### Acknowledgements
+
+- **[hpvb/certum-container](https://github.com/hpvb/certum-container)** — its
+  Docker + Xvnc + SimplySign + p11-kit setup, and especially the "you must press
+  Close or the token won't work" note, are what made reverse-engineering the
+  SimplySign cloud protocol tractable. ssign drops the container entirely, but it
+  stood on that groundwork.
+- **[osslsigncode](https://github.com/mtrojnar/osslsigncode)** — the reason the
+  PKCS#11 module reaches every format: it hashes and packages PE, MSI, CAB, CAT,
+  APPX and scripts, so ssign only has to supply the cloud key.
 
 ---
 
@@ -191,7 +230,9 @@ the relevant module.
 - [GitHub Actions (FR)](#github-actions-fr)
 - [Signature sécurisée avec accord du propriétaire](#signature-sécurisée-avec-accord-du-propriétaire)
 - [État](#état)
-- [Contribuer — formats recherchés](#contribuer--formats-recherchés)
+- [Signer tous les formats — le module PKCS#11](#signer-tous-les-formats--le-module-pkcs11)
+- [Contribuer — formats natifs recherchés](#contribuer--formats-natifs-recherchés)
+- [Remerciements](#remerciements)
 
 La signature Authenticode, ce ne sont que des données : hacher le fichier et
 emballer la signature RSA du cloud dans un blob PKCS#7. `ssign` fait tout en
@@ -318,22 +359,60 @@ encore activée.
 Pipeline : `otp` → `auth` (OAuth) → `card` → `sign` (SCS1_ATOM) → `authenticode`
 (hash + PKCS#7) → `timestamp` (RFC3161).
 
-### Contribuer — formats recherchés
+### Signer tous les formats — le module PKCS#11
 
-Le chemin **PE** est solide et prouvé en CI. Le reste de la surface Authenticode
-est grand ouvert, et les coups de main sont les bienvenus :
+Le signeur natif de ssign couvre les **PE** (`.exe`/`.dll`/`.sys`/…). Pour
+**tous** les autres formats Authenticode — MSI, CAB, catalogue, APPX, PowerShell
+— ssign fournit aussi un **module PKCS#11** (`ssign-pkcs11`) qui présente votre
+clé cloud Certum à [`osslsigncode`](https://github.com/mtrojnar/osslsigncode),
+qui sait déjà tous les hasher et les emballer. Toujours sans SimplySign Desktop,
+sans p11-kit, sans carte à puce — le module parle au cloud en HTTPS comme le
+reste de ssign.
+
+```sh
+cargo build -p ssign-pkcs11 --release   # → target/release/libssign_pkcs11.so
+
+export CERTUM_EMAIL=vous@example.com CERTUM_OTP=GRAINE_BASE32
+osslsigncode sign \
+  -pkcs11module ./target/release/libssign_pkcs11.so \
+  -pkcs11cert 'pkcs11:type=cert' -key 'pkcs11:type=private' \
+  -ac certum-code-signing-2021-ca.pem \
+  -h sha256 -t http://time.certum.pl/ \
+  -in installeur.msi -out installeur-signe.msi
+```
+
+Il lit les mêmes `CERTUM_EMAIL` / `CERTUM_OTP` (ou `CERTUM_TOKEN`) que la CLI et
+**met en cache la session cloud**, donc signer plusieurs fichiers d'affilée ne
+demande qu'un seul code. `-ac` embarque l'intermédiaire Certum « Code Signing
+2021 CA » pour que la chaîne se vérifie. `ssign-pkcs11/tests/sign-all-formats.sh`
+signe un fichier de chaque format de bout en bout.
+
+### Contribuer — formats natifs recherchés
+
+Le module couvre déjà tous les formats *aujourd'hui* via osslsigncode. Un support
+natif, sans dépendance, dans ssign lui-même (pour n'avoir besoin ni d'osslsigncode
+ni d'un moteur PKCS#11) reste le bienvenu :
 
 - **MSI / MSP / MSM** — en cours ; le pré-hash CFB (OLE2) ne correspond pas
   encore à `osslsigncode`. Des notes ou un correctif ici vaudraient de l'or.
-- Archives **CAB**
-- Catalogues de sécurité **CAT**
-- Packages **APPX / MSIX**
+- Archives **CAB**, catalogues **CAT**, packages **APPX / MSIX**
 - Signature **PowerShell / scripts** (`.ps1`, `.psm1`, `.vbs`, `.js`) via SIP
 
 Chacun est indépendant de la plomberie cloud — login, carte et signature
 fonctionnent déjà, donc la tâche est « hasher ce format conteneur à la mode
 Authenticode, puis passer l'empreinte au chemin de signature existant ». Ouvrez
 une issue ou une PR ; je vous oriente volontiers vers le bon module.
+
+### Remerciements
+
+- **[hpvb/certum-container](https://github.com/hpvb/certum-container)** — son
+  montage Docker + Xvnc + SimplySign + p11-kit, et surtout la note « il faut
+  cliquer sur Close sinon le token ne fonctionne pas », ont rendu la
+  rétro-ingénierie du protocole cloud SimplySign abordable. ssign supprime le
+  conteneur, mais s'appuie sur ce travail de défrichage.
+- **[osslsigncode](https://github.com/mtrojnar/osslsigncode)** — la raison pour
+  laquelle le module PKCS#11 atteint tous les formats : il hashe et emballe PE,
+  MSI, CAB, CAT, APPX et scripts, si bien que ssign n'a qu'à fournir la clé cloud.
 
 ---
 

@@ -58,7 +58,10 @@ impl CertumBackend {
         }
     }
 
-    /// Return the shared session, logging in on first use.
+    /// Return the shared session. Reuses a cached token when one is still
+    /// valid (no OTP), otherwise logs in once and caches the result — so
+    /// signing many files in a row (osslsigncode reloads us per file) doesn't
+    /// replay the one-time code.
     fn session(&self) -> Result<Arc<CloudSession>> {
         let mut guard = self
             .session
@@ -67,9 +70,17 @@ impl CertumBackend {
         if let Some(s) = guard.as_ref() {
             return Ok(s.clone());
         }
-        let (email, code) = credentials()?;
-        let session = CloudSession::open(&email, &code)
-            .map_err(|e| boxed(format!("Certum cloud login / card fetch failed: {e:#}")))?;
+        let email = std::env::var("CERTUM_EMAIL").map_err(|_| boxed("CERTUM_EMAIL is not set"))?;
+        let session = match CloudSession::load_cached(&email) {
+            Some(cached) => cached,
+            None => {
+                let code = otp_code()?;
+                let fresh = CloudSession::open(&email, &code)
+                    .map_err(|e| boxed(format!("Certum cloud login / card fetch failed: {e:#}")))?;
+                fresh.save(&email);
+                fresh
+            }
+        };
         let session = Arc::new(session);
         *guard = Some(session.clone());
         Ok(session)
@@ -259,14 +270,15 @@ fn sha256_from_digestinfo(data: &[u8]) -> Result<[u8; 32]> {
     }
 }
 
-/// Resolve `(email, six-digit code)` from the environment.
-fn credentials() -> Result<(String, String)> {
-    let email = std::env::var("CERTUM_EMAIL").map_err(|_| boxed("CERTUM_EMAIL is not set"))?;
+/// Resolve the current 6-digit code from the environment — only needed when
+/// there's no valid cached session to reuse.
+fn otp_code() -> Result<String> {
     if let Ok(code) = std::env::var("CERTUM_TOKEN") {
-        return Ok((email, code));
+        return Ok(code);
     }
-    let seed = std::env::var("CERTUM_OTP")
-        .map_err(|_| boxed("set CERTUM_OTP (TOTP seed) or CERTUM_TOKEN (6-digit code)"))?;
+    let seed = std::env::var("CERTUM_OTP").map_err(|_| {
+        boxed("no valid cached session; set CERTUM_OTP (TOTP seed) or CERTUM_TOKEN (6-digit code) to log in")
+    })?;
     let now = SystemTime::now()
         .duration_since(UNIX_EPOCH)
         .map_err(|e| boxed(format!("system clock before 1970: {e}")))?
@@ -274,7 +286,7 @@ fn credentials() -> Result<(String, String)> {
     let code = ssign_core::otp::Totp::parse(&seed)
         .map_err(|e| boxed(format!("invalid CERTUM_OTP seed: {e:#}")))?
         .code_at(now);
-    Ok((email, code))
+    Ok(code)
 }
 
 // ---------------------------------------------------------------------------
