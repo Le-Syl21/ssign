@@ -94,6 +94,14 @@ pub fn pe_hash(pe: &[u8]) -> Result<[u8; 32]> {
     if cert_end < pe.len() {
         h.update(&pe[cert_end..]);
     }
+    // An unsigned file is zero-padded to an 8-byte boundary by embed() before the
+    // certificate table is appended, and that padding falls inside the region
+    // Windows hashes. It must be hashed here too, or every PE whose length is not
+    // already a multiple of 8 gets a digest Windows disagrees with.
+    if l.cert_table_size == 0 {
+        let pad = (8 - (pe.len() % 8)) % 8;
+        h.update(&[0u8; 8][..pad]);
+    }
     Ok(h.finalize().into())
 }
 
@@ -380,6 +388,31 @@ pub fn utc_time(unix: u64) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn pe_hash_covers_the_alignment_padding() {
+        // embed() zero-pads an unsigned PE to an 8-byte boundary before appending
+        // the certificate table, and Windows hashes that padding. Hashing the file
+        // as it stands must therefore agree with hashing the padded bytes — if it
+        // does not, every PE whose length is not already a multiple of 8 is signed
+        // with a digest Windows rejects (Status: HashMismatch).
+        let base = include_bytes!("../tests/fixtures/hello.exe");
+
+        let mut odd = base.to_vec();
+        odd.extend_from_slice(b"ABCDE");
+        assert_ne!(
+            odd.len() % 8,
+            0,
+            "fixture must not be 8-aligned for this test"
+        );
+
+        let mut padded = odd.clone();
+        while !padded.len().is_multiple_of(8) {
+            padded.push(0);
+        }
+
+        assert_eq!(pe_hash(&odd).unwrap(), pe_hash(&padded).unwrap());
+    }
 
     #[test]
     fn pe_hash_matches_osslsigncode() {
