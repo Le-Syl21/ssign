@@ -23,7 +23,7 @@ const OID_SPC_INDIVIDUAL: &str = "1.3.6.1.4.1.311.2.1.21";
 const OID_CONTENT_TYPE: &str = "1.2.840.113549.1.9.3";
 const OID_MESSAGE_DIGEST: &str = "1.2.840.113549.1.9.4";
 const OID_SIGNING_TIME: &str = "1.2.840.113549.1.9.5";
-const OID_TIMESTAMP_TOKEN: &str = "1.2.840.113549.1.9.16.2.14";
+const OID_TIMESTAMP_TOKEN: &str = "1.3.6.1.4.1.311.3.3.1";
 
 /// The `SpcAttributeTypeAndOptionalValue` is identical for every PE signature
 /// (SPC_PE_IMAGE_DATA + the "<<<Obsolete>>>" moniker); captured verbatim.
