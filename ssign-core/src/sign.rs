@@ -51,7 +51,8 @@ pub fn request(client: &Client, token: &str, card: &Card, sha256: &[u8; 32]) -> 
 }
 
 fn parse_signature_response(resp: &[u8], digest_hex: &str) -> Result<Vec<u8>> {
-    let arr: serde_json::Value = serde_json::from_slice(resp).context("signature result was not JSON")?;
+    let arr: serde_json::Value =
+        serde_json::from_slice(resp).context("signature result was not JSON")?;
     // Result shape: [ { "<digest hex>": "<signature hex>" } ]
     let sig_hex = arr
         .as_array()
