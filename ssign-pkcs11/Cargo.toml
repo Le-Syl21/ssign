@@ -1,6 +1,6 @@
 [package]
 name = "ssign-pkcs11"
-version = "0.1.1"
+version = "0.1.2"
 edition = "2021"
 description = "PKCS#11 module exposing a Certum SimplySign cloud key to osslsigncode/signtool for every Authenticode format."
 license = "MIT"
