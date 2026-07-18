@@ -82,10 +82,17 @@ fn pe_layout(pe: &[u8]) -> Result<PeLayout> {
 /// Compute the Authenticode SHA-256 hash of a PE image.
 pub fn pe_hash(pe: &[u8]) -> Result<[u8; 32]> {
     let l = pe_layout(pe)?;
+    let cert_end = l
+        .cert_table_off
+        .checked_add(l.cert_table_size)
+        .context("certificate table length overflows")?;
+    if l.cert_table_off > pe.len() || cert_end > pe.len() {
+        bail!("certificate table lies outside the PE file");
+    }
     let (cert_start, cert_end) = if l.cert_table_size == 0 {
         (pe.len(), pe.len())
     } else {
-        (l.cert_table_off, l.cert_table_off + l.cert_table_size)
+        (l.cert_table_off, cert_end)
     };
     let mut h = Sha256::new();
     h.update(&pe[..l.checksum_off]);
@@ -412,6 +419,18 @@ mod tests {
         }
 
         assert_eq!(pe_hash(&odd).unwrap(), pe_hash(&padded).unwrap());
+    }
+
+    #[test]
+    fn rejects_certificate_table_outside_the_file() {
+        let mut pe = vec![0u8; 0x200];
+        pe[..2].copy_from_slice(b"MZ");
+        pe[0x3c..0x40].copy_from_slice(&(0x80u32).to_le_bytes());
+        pe[0x80..0x84].copy_from_slice(b"PE\0\0");
+        pe[0x98..0x9a].copy_from_slice(&[0x0b, 0x01]);
+        pe[0x118..0x11c].copy_from_slice(&(0xffff_fff0u32).to_le_bytes());
+        pe[0x11c..0x120].copy_from_slice(&(0x20u32).to_le_bytes());
+        assert!(pe_hash(&pe).is_err());
     }
 
     #[test]
