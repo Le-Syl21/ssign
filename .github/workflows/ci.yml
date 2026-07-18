@@ -42,6 +42,7 @@ jobs:
       - name: Install Rust
         uses: dtolnay/rust-toolchain@4cda84d5c5c54efe2404f9d843567869ab1699d4  # stable
         with:
+          toolchain: stable
           targets: ${{ matrix.target }}
           components: ${{ matrix.lint && 'rustfmt, clippy' || '' }}
 
@@ -386,6 +387,8 @@ jobs:
     steps:
       - uses: actions/checkout@v7
       - uses: dtolnay/rust-toolchain@4cda84d5c5c54efe2404f9d843567869ab1699d4  # stable
+        with:
+          toolchain: stable
 
       # Download outside the repo working tree so `cargo publish` sees a clean tree.
       - name: Download all artifacts
@@ -420,6 +423,8 @@ jobs:
 
       - name: Install Rust
         uses: dtolnay/rust-toolchain@4cda84d5c5c54efe2404f9d843567869ab1699d4  # stable
+        with:
+          toolchain: stable
 
       - name: Get a temporary crates.io token (OIDC)
         id: auth
