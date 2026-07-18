@@ -71,8 +71,8 @@ fn validate_timestamp_token(token: &[u8]) -> Result<()> {
     if wrapped.first() != Some(&0xa0) {
         bail!("CMS SignedData is missing its explicit wrapper");
     }
-    let signed_data = asn1::children(wrapped)
-        .map_err(|e| anyhow::anyhow!("bad CMS SignedData wrapper: {e}"))?;
+    let signed_data =
+        asn1::children(wrapped).map_err(|e| anyhow::anyhow!("bad CMS SignedData wrapper: {e}"))?;
     if signed_data.len() != 1 || signed_data[0].first() != Some(&0x30) {
         bail!("CMS SignedData wrapper did not contain SignedData");
     }
