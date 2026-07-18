@@ -47,18 +47,41 @@ pub fn request(client: &Client, token: &str, card: &Card, sha256: &[u8; 32]) -> 
     .context("signature task")?
     .1;
 
-    let arr: serde_json::Value =
-        serde_json::from_slice(&resp).context("signature result was not JSON")?;
+    parse_signature_response(&resp, &digest_hex)
+}
+
+fn parse_signature_response(resp: &[u8], digest_hex: &str) -> Result<Vec<u8>> {
+    let arr: serde_json::Value = serde_json::from_slice(resp).context("signature result was not JSON")?;
     // Result shape: [ { "<digest hex>": "<signature hex>" } ]
     let sig_hex = arr
         .as_array()
         .and_then(|a| a.first())
         .and_then(|o| o.as_object())
-        .and_then(|m| m.values().next())
+        .and_then(|m| m.get(digest_hex))
         .and_then(|v| v.as_str())
         .with_context(|| {
-            let snip: String = String::from_utf8_lossy(&resp).chars().take(300).collect();
-            format!("no signature in the result; got: {snip}")
+            let snip: String = String::from_utf8_lossy(resp).chars().take(300).collect();
+            format!("no signature for requested digest {digest_hex}; got: {snip}")
         })?;
     hex::decode(sig_hex).context("signature was not valid hex")
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn selects_the_signature_for_the_requested_digest() {
+        let response = br#"[{"other":"aa","wanted":"bb"}]"#;
+        assert_eq!(
+            parse_signature_response(response, "wanted").unwrap(),
+            vec![0xbb]
+        );
+    }
+
+    #[test]
+    fn rejects_a_response_without_the_requested_digest() {
+        let response = br#"[{"other":"aa"}]"#;
+        assert!(parse_signature_response(response, "wanted").is_err());
+    }
 }
