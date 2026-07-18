@@ -91,52 +91,8 @@ jobs:
         if: matrix.target != 'x86_64-apple-darwin' && !matrix.cross
         run: cargo run --release --target ${{ matrix.target }} -- --help
 
-      # --- Apple signing & notarization (macOS, tags only) ---
-      - name: Import Apple Developer ID certificate
-        if: runner.os == 'macOS' && startsWith(github.ref, 'refs/tags/v')
-        env:
-          APPLE_CERTIFICATE_P12: ${{ secrets.APPLE_CERTIFICATE_P12 }}
-          APPLE_CERTIFICATE_PASSWORD: ${{ secrets.APPLE_CERTIFICATE_PASSWORD }}
-        run: |
-          KEYCHAIN_PASSWORD=$(openssl rand -base64 32)
-          KEYCHAIN_PATH=$RUNNER_TEMP/signing.keychain-db
-          security create-keychain -p "$KEYCHAIN_PASSWORD" "$KEYCHAIN_PATH"
-          security set-keychain-settings -lut 21600 "$KEYCHAIN_PATH"
-          security unlock-keychain -p "$KEYCHAIN_PASSWORD" "$KEYCHAIN_PATH"
-          echo "$APPLE_CERTIFICATE_P12" | base64 --decode > "$RUNNER_TEMP/certificate.p12"
-          security import "$RUNNER_TEMP/certificate.p12" \
-            -k "$KEYCHAIN_PATH" -P "$APPLE_CERTIFICATE_PASSWORD" -T /usr/bin/codesign
-          security list-keychain -d user -s "$KEYCHAIN_PATH"
-          security set-key-partition-list \
-            -S apple-tool:,apple: -s -k "$KEYCHAIN_PASSWORD" "$KEYCHAIN_PATH"
-
-      - name: Sign binary (macOS)
-        if: runner.os == 'macOS' && startsWith(github.ref, 'refs/tags/v')
-        env:
-          APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
-        run: |
-          codesign --force --options runtime --timestamp \
-            --sign "Developer ID Application: Sylvain Gargasson ($APPLE_TEAM_ID)" \
-            target/${{ matrix.target }}/release/ssign \
-            target/${{ matrix.target }}/release/libssign_pkcs11.dylib
-
-      - name: Notarize (macOS, tags only)
-        if: runner.os == 'macOS' && startsWith(github.ref, 'refs/tags/v')
-        env:
-          APPLE_ID: ${{ secrets.APPLE_ID }}
-          APPLE_ID_PASSWORD: ${{ secrets.APPLE_ID_PASSWORD }}
-          APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
-        run: |
-          mkdir -p "$RUNNER_TEMP/notarize"
-          cp target/${{ matrix.target }}/release/ssign \
-             target/${{ matrix.target }}/release/libssign_pkcs11.dylib \
-             "$RUNNER_TEMP/notarize/"
-          ditto -c -k --keepParent "$RUNNER_TEMP/notarize" "$RUNNER_TEMP/ssign.zip"
-          xcrun notarytool submit "$RUNNER_TEMP/ssign.zip" \
-            --apple-id "$APPLE_ID" --password "$APPLE_ID_PASSWORD" \
-            --team-id "$APPLE_TEAM_ID" --wait
-
-      # --- Package ---
+      # --- Package (binaires non signés ; la signature Apple est faite plus bas,
+      # dans un job dédié derrière l'environnement `signing`). ---
       - name: Package (Unix)
         if: runner.os != 'Windows'
         run: tar czf ssign-${{ matrix.label }}.tar.gz -C target/${{ matrix.target }}/release ssign
@@ -168,6 +124,149 @@ jobs:
         with:
           name: ssign-pkcs11-${{ matrix.label }}
           path: ssign-pkcs11-${{ matrix.label }}.*
+
+  # Signature + notarisation Apple. Derrière `signing` au même titre que Windows :
+  # une signature Developer ID engage l'identité (et donc la réputation) du
+  # propriétaire, elle ne doit jamais partir sans approbation explicite. Les
+  # secrets Apple vivent dans cet environnement — un job qui ne le déclare pas
+  # les lirait vides.
+  sign-apple:
+    needs: build
+    if: startsWith(github.ref, 'refs/tags/v')
+    runs-on: macos-latest
+    environment: signing
+    steps:
+      # Attrape les quatre artefacts macOS : CLI + module PKCS#11, pour les deux
+      # architectures.
+      - name: Download the macOS artifacts
+        uses: actions/download-artifact@v8
+        with:
+          pattern: ssign-*macos-*
+          path: dl
+
+      - name: Import Apple Developer ID certificate
+        env:
+          APPLE_CERTIFICATE_P12: ${{ secrets.APPLE_CERTIFICATE_P12 }}
+          APPLE_CERTIFICATE_PASSWORD: ${{ secrets.APPLE_CERTIFICATE_PASSWORD }}
+        run: |
+          KEYCHAIN_PASSWORD=$(openssl rand -base64 32)
+          KEYCHAIN_PATH=$RUNNER_TEMP/signing.keychain-db
+          security create-keychain -p "$KEYCHAIN_PASSWORD" "$KEYCHAIN_PATH"
+          security set-keychain-settings -lut 21600 "$KEYCHAIN_PATH"
+          security unlock-keychain -p "$KEYCHAIN_PASSWORD" "$KEYCHAIN_PATH"
+          echo "$APPLE_CERTIFICATE_P12" | base64 --decode > "$RUNNER_TEMP/certificate.p12"
+          security import "$RUNNER_TEMP/certificate.p12" \
+            -k "$KEYCHAIN_PATH" -P "$APPLE_CERTIFICATE_PASSWORD" -T /usr/bin/codesign
+          security list-keychain -d user -s "$KEYCHAIN_PATH"
+          security set-key-partition-list \
+            -S apple-tool:,apple: -s -k "$KEYCHAIN_PASSWORD" "$KEYCHAIN_PATH"
+
+      - name: Sign & notarize the macOS binaries
+        env:
+          APPLE_ID: ${{ secrets.APPLE_ID }}
+          APPLE_ID_PASSWORD: ${{ secrets.APPLE_ID_PASSWORD }}
+          APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+        run: |
+          # Soumission + attente, avec timeout et jusqu'à 3 tentatives (5/15/45 min).
+          notarize_once() {
+            local zip="$1" timeout="$2"
+            local output
+            output=$(xcrun notarytool submit "$zip" \
+              --apple-id "$APPLE_ID" \
+              --password "$APPLE_ID_PASSWORD" \
+              --team-id "$APPLE_TEAM_ID" \
+              --verbose 2>&1)
+            echo "$output"
+            local sub_id
+            sub_id=$(echo "$output" | awk '/id:/{print $2; exit}')
+            [ -n "$sub_id" ] || { echo "échec: pas d'ID de soumission"; return 1; }
+            echo "soumis (id: $sub_id)"
+
+            local deadline=$((SECONDS + timeout))
+            while [ $SECONDS -lt $deadline ]; do
+              sleep 30
+              local info
+              info=$(xcrun notarytool info "$sub_id" \
+                --apple-id "$APPLE_ID" \
+                --password "$APPLE_ID_PASSWORD" \
+                --team-id "$APPLE_TEAM_ID" 2>&1) || { echo "erreur réseau, on repoll…"; continue; }
+              local status
+              status=$(echo "$info" | awk '/status:/{print $2; exit}')
+              echo "statut: $status"
+              case "$status" in
+                Accepted) return 0 ;;
+                Invalid|Rejected)
+                  xcrun notarytool log "$sub_id" \
+                    --apple-id "$APPLE_ID" \
+                    --password "$APPLE_ID_PASSWORD" \
+                    --team-id "$APPLE_TEAM_ID" 2>&1 || true
+                  return 1 ;;
+              esac
+            done
+            echo "timeout après $((timeout / 60)) min"
+            return 2
+          }
+
+          notarize() {
+            local zip="$1"
+            local backoffs=(300 900 2700)
+            for i in 0 1 2; do
+              echo "notarisation: tentative $((i + 1))/3"
+              notarize_once "$zip" "${backoffs[$i]}" && return 0
+              local rc=$?
+              [ $rc -eq 2 ] || return $rc   # ne réessaie que sur timeout
+            done
+            return 1
+          }
+
+          for label in macos-aarch64 macos-x86_64; do
+            echo "::group::$label"
+            work="$RUNNER_TEMP/$label"
+            mkdir -p "$work"
+            # CLI et module vivent dans deux artefacts distincts, mais une seule
+            # soumission de notarisation suffit pour les deux.
+            tar xzf "dl/ssign-$label/ssign-$label.tar.gz" -C "$work"
+            tar xzf "dl/ssign-pkcs11-$label/ssign-pkcs11-$label.tar.gz" -C "$work"
+
+            for f in ssign libssign_pkcs11.dylib; do
+              codesign --force --options runtime \
+                --sign "Developer ID Application: Sylvain Gargasson ($APPLE_TEAM_ID)" \
+                --timestamp "$work/$f"
+              codesign --verify --strict --verbose=2 "$work/$f"
+            done
+
+            ditto -c -k --keepParent "$work" "$RUNNER_TEMP/$label.zip"
+            notarize "$RUNNER_TEMP/$label.zip" || exit 1
+
+            tar czf "ssign-$label.tar.gz" -C "$work" ssign
+            tar czf "ssign-pkcs11-$label.tar.gz" -C "$work" libssign_pkcs11.dylib
+            echo "::endgroup::"
+          done
+
+      - name: Re-upload the signed macOS aarch64 CLI
+        uses: actions/upload-artifact@v7
+        with:
+          name: ssign-macos-aarch64
+          path: ssign-macos-aarch64.tar.gz
+          overwrite: true
+      - name: Re-upload the signed macOS aarch64 module
+        uses: actions/upload-artifact@v7
+        with:
+          name: ssign-pkcs11-macos-aarch64
+          path: ssign-pkcs11-macos-aarch64.tar.gz
+          overwrite: true
+      - name: Re-upload the signed macOS x86_64 CLI
+        uses: actions/upload-artifact@v7
+        with:
+          name: ssign-macos-x86_64
+          path: ssign-macos-x86_64.tar.gz
+          overwrite: true
+      - name: Re-upload the signed macOS x86_64 module
+        uses: actions/upload-artifact@v7
+        with:
+          name: ssign-pkcs11-macos-x86_64
+          path: ssign-pkcs11-macos-x86_64.tar.gz
+          overwrite: true
 
   # Sign the Windows binary with ssign itself (the Linux runner signs the Windows
   # .exe — dogfooding). Gated by the `signing` environment: the run pauses for
@@ -256,7 +355,7 @@ jobs:
           overwrite: true
 
   release:
-    needs: [build, sign-windows]
+    needs: [build, sign-windows, sign-apple]
     if: startsWith(github.ref, 'refs/tags/v')
     runs-on: ubuntu-24.04
     permissions:
