@@ -12,6 +12,7 @@ use std::fs::{self, File, OpenOptions};
 use std::io::{self, Write};
 use std::path::{Path, PathBuf};
 use std::time::{SystemTime, UNIX_EPOCH};
+use zeroize::{Zeroize, Zeroizing};
 
 /// Authenticode-sign Windows binaries (exe/dll/msi/sys) with a Certum SimplySign
 /// cloud certificate — cross-platform, no GUI, no vendor stack.
@@ -61,12 +62,19 @@ struct Cli {
     verbose: bool,
 }
 
-/// One-time code resolved from either --otp (seed) or --token (literal code).
+/// The one-time-code source, wiped from memory when it goes out of scope.
+///
+/// `Zeroizing` narrows the window during which the seed sits in the process
+/// image (a core dump, a swapped-out page). It cannot undo the exposure that
+/// happens before `main` runs: a value passed as `--otp` is visible in
+/// `/proc/<pid>/cmdline`, and one passed through `CERTUM_OTP` in
+/// `/proc/<pid>/environ`. Prefer the environment variable, and prefer a
+/// short-lived `--token` over the seed when signing by hand.
 enum Otp {
     /// A base32 TOTP seed; the 6-digit code is derived at run time.
-    Seed(String),
+    Seed(Zeroizing<String>),
     /// A literal 6-digit code, valid only for its ~30 s window.
-    Code(String),
+    Code(Zeroizing<String>),
 }
 
 const USAGE_NOTES: &str = "\
@@ -90,20 +98,23 @@ EXAMPLES
 ";
 
 fn main() -> Result<()> {
-    let cli = Cli::parse();
+    let mut cli = Cli::parse();
 
     let otp = match (&cli.otp, &cli.token) {
         (Some(_), Some(_)) => bail!("pass only one of --otp (seed) or --token (code)"),
         (None, None) => bail!("authentication required: pass --otp <seed> or --token <code> (or set CERTUM_OTP / CERTUM_TOKEN)"),
-        (Some(seed), None) => Otp::Seed(seed.clone()),
-        (None, Some(code)) => Otp::Code(code.clone()),
+        (Some(seed), None) => Otp::Seed(Zeroizing::new(seed.clone())),
+        (None, Some(code)) => Otp::Code(Zeroizing::new(code.clone())),
     };
+    // The secret now lives only inside `otp`; wipe the copies clap parsed.
+    cli.otp.zeroize();
+    cli.token.zeroize();
 
     run(&cli, otp).context("signing failed")
 }
 
 /// Resolve the current 6-digit code from either the seed or a literal token.
-fn resolve_code(otp: &Otp) -> Result<String> {
+fn resolve_code(otp: &Otp) -> Result<Zeroizing<String>> {
     match otp {
         Otp::Code(code) => Ok(code.clone()),
         Otp::Seed(seed) => {
@@ -111,9 +122,11 @@ fn resolve_code(otp: &Otp) -> Result<String> {
                 .duration_since(UNIX_EPOCH)
                 .context("system clock before 1970")?
                 .as_secs();
-            Ok(otp::Totp::parse(seed)
-                .context("invalid TOTP seed / otpauth URI in --otp / CERTUM_OTP")?
-                .code_at(now))
+            Ok(Zeroizing::new(
+                otp::Totp::parse(seed.as_str())
+                    .context("invalid TOTP seed / otpauth URI in --otp / CERTUM_OTP")?
+                    .code_at(now),
+            ))
         }
     }
 }

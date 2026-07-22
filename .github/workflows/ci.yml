@@ -88,7 +88,7 @@ jobs:
 
       - name: Clippy
         if: matrix.lint
-        run: cargo clippy --release --target ${{ matrix.target }} -- -D warnings
+        run: cargo clippy --workspace --all-targets --release --target ${{ matrix.target }} -- -D warnings
 
       # --- Build ---
       - name: Set macOS deployment target
@@ -109,7 +109,7 @@ jobs:
       # x86_64 host) and the macOS x86_64 build (Apple-silicon runner).
       - name: Run tests
         if: matrix.target != 'x86_64-apple-darwin' && !matrix.cross
-        run: cargo test --release --target ${{ matrix.target }}
+        run: cargo test --workspace --release --target ${{ matrix.target }}
 
       - name: Smoke test (--help runs)
         if: matrix.target != 'x86_64-apple-darwin' && !matrix.cross
