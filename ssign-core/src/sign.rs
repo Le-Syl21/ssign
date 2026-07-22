@@ -58,7 +58,11 @@ fn parse_signature_response(resp: &[u8], digest_hex: &str) -> Result<Vec<u8>> {
         .as_array()
         .and_then(|a| a.first())
         .and_then(|o| o.as_object())
-        .and_then(|m| m.get(digest_hex))
+        .and_then(|m| {
+            m.iter()
+                .find(|(digest, _)| digest.eq_ignore_ascii_case(digest_hex))
+                .map(|(_, signature)| signature)
+        })
         .and_then(|v| v.as_str())
         .with_context(|| {
             let snip: String = String::from_utf8_lossy(resp).chars().take(300).collect();
@@ -76,6 +80,17 @@ mod tests {
         let response = br#"[{"other":"aa","wanted":"bb"}]"#;
         assert_eq!(
             parse_signature_response(response, "wanted").unwrap(),
+            vec![0xbb]
+        );
+    }
+
+    #[test]
+    fn selects_a_realistic_digest_regardless_of_hex_case() {
+        let digest = "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef";
+        let response =
+            br#"[{"0123456789ABCDEF0123456789ABCDEF0123456789ABCDEF0123456789ABCDEF":"bb"}]"#;
+        assert_eq!(
+            parse_signature_response(response, digest).unwrap(),
             vec![0xbb]
         );
     }
