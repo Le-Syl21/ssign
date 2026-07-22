@@ -7,6 +7,7 @@ use sha2::{Digest, Sha256};
 use std::time::Duration;
 
 const OID_SHA256: &str = "2.16.840.1.101.3.4.2.1";
+const OID_PKCS7_SIGNED_DATA: &str = "1.2.840.113549.1.7.2";
 
 /// Request a timestamp over `signature` from the RFC3161 TSA at `url`; returns
 /// the DER `TimeStampToken` (a PKCS#7 ContentInfo).
@@ -54,5 +55,42 @@ pub fn fetch(url: &str, signature: &[u8]) -> Result<Vec<u8>> {
         bail!("TSA rejected the request (status {status})");
     }
     let token = top.get(1).context("TSR has no timeStampToken")?;
+    validate_timestamp_token(token)?;
     Ok(token.to_vec())
+}
+
+fn validate_timestamp_token(token: &[u8]) -> Result<()> {
+    if token.first() != Some(&0x30) {
+        bail!("timeStampToken is not a DER SEQUENCE");
+    }
+    let children = asn1::children(token).map_err(|e| anyhow::anyhow!("bad timeStampToken: {e}"))?;
+    if children.len() != 2 || children[0] != asn1::oid(OID_PKCS7_SIGNED_DATA).as_slice() {
+        bail!("timeStampToken is not CMS SignedData");
+    }
+    let wrapped = children[1];
+    if wrapped.first() != Some(&0xa0) {
+        bail!("CMS SignedData is missing its explicit wrapper");
+    }
+    let signed_data =
+        asn1::children(wrapped).map_err(|e| anyhow::anyhow!("bad CMS SignedData wrapper: {e}"))?;
+    if signed_data.len() != 1 || signed_data[0].first() != Some(&0x30) {
+        bail!("CMS SignedData wrapper did not contain SignedData");
+    }
+    Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn accepts_only_cms_signed_data_tokens() {
+        let signed_data = asn1::seq(&[]);
+        let token = asn1::seq(&[
+            &asn1::oid("1.2.840.113549.1.7.2"),
+            &asn1::ctx(0, &signed_data),
+        ]);
+        assert!(validate_timestamp_token(&token).is_ok());
+        assert!(validate_timestamp_token(&asn1::seq(&[])).is_err());
+    }
 }
