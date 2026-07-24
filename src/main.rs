@@ -3,6 +3,10 @@
 //! This is the command-line front end; the signing pipeline itself lives in the
 //! `ssign` library crate ([`auth`], [`card`], [`sign`], [`authenticode`], …) so
 //! it can be shared with the `ssign-pkcs11` module.
+//!
+//! # Community & support
+//!
+//! Questions, bugs, beta testing — join the Discord: <https://discord.gg/T37DYHmt2j>
 
 use ssign_core::{auth, authenticode, card, client, otp, sign, timestamp};
 
@@ -19,6 +23,7 @@ use zeroize::{Zeroize, Zeroizing};
 #[derive(Parser, Debug)]
 #[command(name = "ssign", version, about, long_about = None)]
 #[command(after_long_help = USAGE_NOTES)]
+#[command(after_help = "Community & support: https://discord.gg/T37DYHmt2j")]
 struct Cli {
     /// Files to sign (Authenticode: exe/dll/msi/sys). Signed in place unless -o.
     #[arg(value_name = "FILES", required = true)]
@@ -95,6 +100,8 @@ EXAMPLES
   # CI / automation (seed once, then unattended):
   export CERTUM_EMAIL=you@example.com CERTUM_OTP=BASE32SEED
   ssign app.exe installer.msi driver.sys
+
+Community & support: https://discord.gg/T37DYHmt2j
 ";
 
 fn main() -> Result<()> {
