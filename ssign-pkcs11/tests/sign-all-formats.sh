@@ -8,7 +8,9 @@
 # so the remaining files reuse it without another code.
 #
 # Requirements:
-#   - osslsigncode + the OpenSSL PKCS#11 engine (Debian/Ubuntu:
+#   - osslsigncode, plus either the OpenSSL PKCS#11 provider or engine --
+#     osslsigncode loads `pkcs11prov` if present and falls back to the libp11
+#     engine, and both are known to work here (Debian/Ubuntu:
 #       apt-get install osslsigncode libengine-pkcs11-openssl)
 #   - a built module: cargo build -p ssign-pkcs11 --release
 #   - Certum credentials in the environment:
