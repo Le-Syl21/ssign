@@ -5,6 +5,13 @@ edition = "2021"
 description = "PKCS#11 module exposing a Certum SimplySign cloud key to osslsigncode/signtool for every Authenticode format."
 license = "MIT"
 repository = "https://github.com/Le-Syl21/ssign"
+# Not on crates.io on purpose: this is a cdylib, so `cargo install` cannot
+# install it (that only handles binaries) and it is useless as a Rust
+# dependency, since it exposes the PKCS#11 C ABI rather than an API. The form
+# that serves people is the prebuilt module in every GitHub release -- signed
+# on Windows and notarised on macOS, same as the `ssign` binary. Publishing
+# would only buy discoverability; it would also need a `version` on the
+# ssign-core path dependency below.
 publish = false
 
 [lib]
