@@ -8,7 +8,7 @@
 //!
 //! Questions, bugs, beta testing — join the Discord: <https://discord.gg/T37DYHmt2j>
 
-use ssign_core::{auth, authenticode, card, client, otp, sign, timestamp};
+use ssign_core::{authenticode, otp, session::CloudSession, timestamp};
 
 use anyhow::{bail, Context, Result};
 use clap::Parser;
@@ -139,20 +139,35 @@ fn resolve_code(otp: &Otp) -> Result<Zeroizing<String>> {
 }
 
 fn run(cli: &Cli, otp: Otp) -> Result<()> {
-    let code = resolve_code(&otp)?;
-
-    // 1. authenticate (once for the whole batch).
+    // 1. authenticate (once for the whole batch), through the shared session
+    //    cache. Going through `CloudSession` rather than calling `auth::login`
+    //    directly is what lets `ssign-pkcs11` pick this token up: a Certum code
+    //    is single-use, so a run that signs a PE here and then hands a script to
+    //    osslsigncode would otherwise log in twice and replay the same code.
+    let session = match CloudSession::load_cached(&cli.email) {
+        Some(cached) => {
+            if cli.verbose {
+                eprintln!("· reusing the cached session for {}", cli.email);
+            }
+            cached
+        }
+        None => {
+            if cli.verbose {
+                eprintln!("· logging in as {}…", cli.email);
+            }
+            let code = resolve_code(&otp)?;
+            let fresh = CloudSession::open(&cli.email, &code).context("login")?;
+            fresh.save(&cli.email);
+            fresh
+        }
+    };
     if cli.verbose {
-        eprintln!("· logging in as {}…", cli.email);
+        eprintln!(
+            "· card {} ready, certificate fetched",
+            session.card_serial()
+        );
     }
-    let token = auth::login(&cli.email, &code).context("login")?.0;
-
-    // 2. materialize the card + certificate (once).
-    let http = client::client()?;
-    let card = card::fetch(&http, &token).context("fetching card/certificate")?;
-    if cli.verbose {
-        eprintln!("· card {} ready, certificate fetched", card.serial);
-    }
+    let cert_der = session.certificate_der().to_vec();
 
     // 3. sign each file, reusing the same session.
     let now = SystemTime::now()
@@ -169,9 +184,9 @@ fn run(cli: &Cli, otp: Otp) -> Result<()> {
         let prep =
             authenticode::prepare(&pe, cli.name.as_deref(), cli.url.as_deref(), &signing_time)
                 .with_context(|| format!("preparing {}", file.display()))?;
-        let signature = sign::request(&http, &token, &card, &prep.to_be_signed)
+        let signature = session
+            .sign_sha256(&prep.to_be_signed)
             .with_context(|| format!("remote signing {}", file.display()))?;
-        let cert_der = authenticode::pem_to_der(&card.certificate_pem)?;
         let ts = if cli.timestamp_url.is_empty() {
             None
         } else {

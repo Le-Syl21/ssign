@@ -15,7 +15,7 @@
 //! [`CloudSession::load_cached`] reuses it, so only the first sign needs an OTP.
 
 use std::fs;
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use std::sync::Mutex;
 use std::time::{SystemTime, UNIX_EPOCH};
 
@@ -102,6 +102,11 @@ impl CloudSession {
         &self.key_id
     }
 
+    /// The card serial this session signs with (`cardno`).
+    pub fn card_serial(&self) -> &str {
+        &self.card.serial
+    }
+
     /// Ask the cloud HSM to sign one SHA-256 digest; returns the raw RSA
     /// PKCS#1 v1.5 signature. The result is memoized per digest so the twin
     /// `C_Sign` calls a PKCS#11 client makes cost a single cloud round-trip.
@@ -122,7 +127,12 @@ impl CloudSession {
     /// still valid. Best-effort: any problem (missing file, wrong account,
     /// expired token, parse error) yields `None` so the caller logs in afresh.
     pub fn load_cached(email: &str) -> Option<Self> {
-        let raw = fs::read(cache_path()?).ok()?;
+        Self::load_cached_from(&cache_path()?, email)
+    }
+
+    /// [`load_cached`](Self::load_cached) against an explicit path.
+    fn load_cached_from(path: &Path, email: &str) -> Option<Self> {
+        let raw = fs::read(path).ok()?;
         let v: serde_json::Value = serde_json::from_slice(&raw).ok()?;
         if v.get("email")?.as_str()? != email {
             return None;
@@ -145,6 +155,11 @@ impl CloudSession {
     /// without an OTP. Best-effort; a failure to write is not fatal.
     pub fn save(&self, email: &str) {
         let Some(path) = cache_path() else { return };
+        self.save_to(&path, email);
+    }
+
+    /// [`save`](Self::save) against an explicit path.
+    fn save_to(&self, path: &Path, email: &str) {
         let doc = serde_json::json!({
             "v": 1,
             "email": email,
@@ -153,7 +168,7 @@ impl CloudSession {
             "serial": self.card.serial,
             "cert_pem": String::from_utf8_lossy(&self.card.certificate_pem),
         });
-        let _ = write_private(&path, doc.to_string().as_bytes());
+        let _ = write_private(path, doc.to_string().as_bytes());
     }
 }
 
@@ -177,7 +192,7 @@ fn cache_path() -> Option<PathBuf> {
 
 /// Write `data` to `path` with owner-only permissions, creating the parent
 /// directory (also owner-only on Unix).
-fn write_private(path: &PathBuf, data: &[u8]) -> std::io::Result<()> {
+fn write_private(path: &Path, data: &[u8]) -> std::io::Result<()> {
     if let Some(dir) = path.parent() {
         fs::create_dir_all(dir)?;
         #[cfg(unix)]
@@ -193,4 +208,99 @@ fn write_private(path: &PathBuf, data: &[u8]) -> std::io::Result<()> {
         fs::set_permissions(path, fs::Permissions::from_mode(0o600))?;
     }
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// A session built straight from parts, with no network involved.
+    fn fake_session() -> CloudSession {
+        use x509_cert::der::pem::LineEnding;
+        use x509_cert::der::EncodePem;
+        let cert_der = include_bytes!("../tests/fixtures/selftest_cert.der");
+        let pem = Certificate::from_der(cert_der)
+            .expect("parse test certificate")
+            .to_pem(LineEnding::LF)
+            .expect("encode test certificate");
+        let card = card::Card {
+            serial: "1234567890".into(),
+            certificate_pem: pem.into_bytes(),
+        };
+        CloudSession::from_parts(client::client().unwrap(), "token-abc".into(), card)
+            .expect("build session from parts")
+    }
+
+    fn temp_cache(name: &str) -> PathBuf {
+        let dir = std::env::temp_dir().join(format!("ssign-cache-test-{name}"));
+        let _ = fs::remove_dir_all(&dir);
+        dir.join("session.json")
+    }
+
+    #[test]
+    fn a_saved_session_is_reloaded_without_a_new_login() {
+        // The bug this guards: the CLI used to call `auth::login` directly and
+        // never write the cache, so `ssign-pkcs11` logged in a second time and
+        // replayed a Certum code that is only accepted once.
+        let path = temp_cache("roundtrip");
+        fake_session().save_to(&path, "user@example.com");
+
+        let loaded = CloudSession::load_cached_from(&path, "user@example.com")
+            .expect("cached session should reload");
+        assert_eq!(loaded.token, "token-abc");
+        assert_eq!(loaded.card_serial(), "1234567890");
+        assert_eq!(loaded.certificate_der(), fake_session().certificate_der());
+        assert_eq!(loaded.key_id(), fake_session().key_id());
+    }
+
+    #[test]
+    fn the_cache_is_owner_only() {
+        let path = temp_cache("perms");
+        fake_session().save_to(&path, "user@example.com");
+        #[cfg(unix)]
+        {
+            use std::os::unix::fs::PermissionsExt;
+            let mode = fs::metadata(&path).unwrap().permissions().mode();
+            assert_eq!(mode & 0o777, 0o600, "token file must not be world-readable");
+        }
+    }
+
+    #[test]
+    fn a_cache_for_another_account_is_ignored() {
+        let path = temp_cache("otheraccount");
+        fake_session().save_to(&path, "user@example.com");
+        assert!(CloudSession::load_cached_from(&path, "someone-else@example.com").is_none());
+    }
+
+    #[test]
+    fn an_expired_cache_is_ignored() {
+        let path = temp_cache("expired");
+        fake_session().save_to(&path, "user@example.com");
+        // Rewrite the expiry into the past, leaving everything else intact.
+        let mut v: serde_json::Value = serde_json::from_slice(&fs::read(&path).unwrap()).unwrap();
+        v["expires_at"] = serde_json::json!(now() - 1);
+        fs::write(&path, v.to_string()).unwrap();
+        assert!(CloudSession::load_cached_from(&path, "user@example.com").is_none());
+    }
+
+    #[test]
+    fn a_cache_about_to_expire_is_ignored() {
+        // A token with a minute left would expire mid-batch: refuse it rather
+        // than start signing on it.
+        let path = temp_cache("nearlyexpired");
+        fake_session().save_to(&path, "user@example.com");
+        let mut v: serde_json::Value = serde_json::from_slice(&fs::read(&path).unwrap()).unwrap();
+        v["expires_at"] = serde_json::json!(now() + 60);
+        fs::write(&path, v.to_string()).unwrap();
+        assert!(CloudSession::load_cached_from(&path, "user@example.com").is_none());
+    }
+
+    #[test]
+    fn a_missing_or_corrupt_cache_is_not_fatal() {
+        let path = temp_cache("corrupt");
+        assert!(CloudSession::load_cached_from(&path, "user@example.com").is_none());
+        fs::create_dir_all(path.parent().unwrap()).unwrap();
+        fs::write(&path, b"not json at all").unwrap();
+        assert!(CloudSession::load_cached_from(&path, "user@example.com").is_none());
+    }
 }
