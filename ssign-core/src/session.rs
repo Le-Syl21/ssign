@@ -66,8 +66,8 @@ impl CloudSession {
         // the SPKI's BIT STRING, which is the shape PKCS#11 clients expect from
         // a public-key object's CKA_VALUE.
         let pubkey_der = cert
-            .tbs_certificate
-            .subject_public_key_info
+            .tbs_certificate()
+            .subject_public_key_info()
             .subject_public_key
             .raw_bytes()
             .to_vec();
@@ -302,5 +302,19 @@ mod tests {
         fs::create_dir_all(path.parent().unwrap()).unwrap();
         fs::write(&path, b"not json at all").unwrap();
         assert!(CloudSession::load_cached_from(&path, "user@example.com").is_none());
+    }
+
+    /// The PKCS#11 key material is what osslsigncode/signtool match a cert to
+    /// its key by, so a dependency bump must not move it. Pinned from the test
+    /// certificate; verified byte for byte across x509-cert 0.2 -> 0.3 and
+    /// der 0.7 -> 0.8, which turned the certificate fields into accessors.
+    #[test]
+    fn key_material_is_stable() {
+        let s = fake_session();
+        assert_eq!(hex::encode(s.public_key_der()), "3082020a0282020100b52b48b82dfdc0fc91f3b914bbd4defad5b198f837c2b43a917a70f37fd3542bfe54a3c32fd1fb15de905300f054850a74b57b8ea30664ec23cbd7aa25dc2d51e47b4a6a934e837acd3ded5197afab9b0be48ad29277d28ec95a35c37c71e603bdd8c0143d2d00148f4ce590d25d1f9d8383cec11b15bd2f117b3fefc4f5c13a1f2b046cc34906d221f9a78a631a5db9448f62c1235a4cc5ed0033e86507cc68cc53e7781e60eedae4b4ba6e95520a7ec944fa4743baf919f2772c55a96c0042a31f60c9b4b4276e87b8666bc71c6288af0e8c0c65573211d827be7088f0d81c3227897b37448fb0d3da50712a74c6f04cd71aeed80e43202fc28508745fecd4bca09d6070068a1c0b73816aa71af5310c77a6cb70d2b430c3a3412f52bf7d620fe63ec871eee12b562c8b22b43fc7ce20e60ed822a2494462d9f8b7c0c8800cd414032256c4792b7a8abfc1d2e82e607752e55ca61075d0aadca88147714532231c8ff0f9a41d10083ce915bc2984d2a960ea3182b1a5f6a71378c6d75fdde7384f76dbea7f988b2b0720fcf341841fa59cf4c0d812bd48b452c37ac8e875c1a1a954f3be35d95c743a356ffbd5bab31cbe04681d489db763bf59034c40b500d9ae34824f65b57eec2f72ef56474f2930167cea1a6d0baff58dee2d5f199fb05b6b44edb2dcab0cc847d15d74ee6bd211c37ba1894a989ef2c0b5d99980e1cf0203010001");
+        assert_eq!(
+            hex::encode(s.key_id()),
+            "533cb9753a556dcb175b0698e83084f6888d5ad3"
+        );
     }
 }

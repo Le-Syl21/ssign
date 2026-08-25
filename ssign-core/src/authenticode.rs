@@ -228,13 +228,13 @@ pub fn finalize(
 ) -> Result<Vec<u8>> {
     let cert = x509_cert::Certificate::from_der(cert_der).context("parsing signing certificate")?;
     let issuer = cert
-        .tbs_certificate
-        .issuer
+        .tbs_certificate()
+        .issuer()
         .to_der()
         .context("encoding issuer")?;
     let serial = cert
-        .tbs_certificate
-        .serial_number
+        .tbs_certificate()
+        .serial_number()
         .to_der()
         .context("encoding serial")?;
     let issuer_and_serial = asn1::seq(&[&issuer, &serial]);

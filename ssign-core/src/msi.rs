@@ -107,4 +107,18 @@ mod tests {
             "CB45D9776CEE01B97E0EB14D007FB2779EBE25C0DCAB25F4A1CAE947C3B19A61"
         );
     }
+    /// Characterisation test: pins what we compute *today*, which is NOT yet
+    /// the value osslsigncode wants (see `msi_hash_matches_osslsigncode` above
+    /// and the note there). Its job is to make a change in behaviour visible --
+    /// notably a `cfb` upgrade, which is otherwise uncovered because the only
+    /// other MSI test is ignored. If a fix lands and this value moves on
+    /// purpose, update it here and un-ignore the real test.
+    #[test]
+    fn msi_hash_is_stable() {
+        let msi = include_bytes!("../tests/fixtures/test.msi");
+        assert_eq!(
+            hex::encode_upper(msi_hash(msi).unwrap()),
+            "472820BD07BAAC261CEAF744012A6883B2A5FBE1F8647B51BDEB493513CFA51B"
+        );
+    }
 }
