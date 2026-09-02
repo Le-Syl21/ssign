@@ -6,6 +6,20 @@ version: 2
 # reçoit plus les correctifs automatiquement — c'est le rôle de Dependabot, qui
 # sait mettre à jour un SHA épinglé et garder le commentaire de version à jour.
 updates:
+  # Crates: one grouped PR a month for the routine bumps, and a separate PR
+  # per major, so a breaking change never holds the rest of them hostage.
+  - package-ecosystem: cargo
+    directory: /
+    schedule:
+      interval: monthly
+    groups:
+      crates:
+        patterns: ["*"]
+        update-types: ["minor", "patch"]
+    commit-message:
+      prefix: chore
+
+
   - package-ecosystem: github-actions
     directory: /
     schedule:
