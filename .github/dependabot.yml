@@ -13,6 +13,14 @@ updates:
     schedule:
       interval: monthly
     groups:
+      # The RustCrypto crates move in lockstep or not at all: sha1 0.11 pulls
+      # digest 0.11 while sha2 0.10 and hmac 0.12 are still on digest 0.10, and
+      # the traits from the two digests do not match — `Hmac<Sha1>` stops being
+      # `KeyInit`. Bumped one at a time they each fail to build; bumped together
+      # they have a chance. One group, one PR.
+      rustcrypto:
+        patterns: ["digest", "sha1", "sha2", "sha3", "hmac", "md-5", "blake2",
+                   "crypto-common", "block-buffer"]
       crates:
         patterns: ["*"]
         update-types: ["minor", "patch"]
