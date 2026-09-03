@@ -26,6 +26,20 @@ updates:
         update-types: ["minor", "patch"]
     commit-message:
       prefix: chore
+    ignore:
+      # The RustCrypto 0.11 generation is out of reach until `rsa` gets there:
+      # rsa 0.9.10, the latest stable, requires sha2 ^0.10.6 and digest ^0.10.5,
+      # and only the unreleased 0.10.0-rc line moves to digest 0.11. Bump ours
+      # anyway and the build stops at `sha2::Sha256: rsa::sha2::Digest` — two
+      # digest generations in one graph — plus `Mac::new_from_slice` is gone
+      # from hmac 0.13 (otp.rs). Patches are still welcome; the minor is not.
+      # Lift this once rsa 0.10 ships stable.
+      - dependency-name: sha1
+        update-types: ["version-update:semver-minor", "version-update:semver-major"]
+      - dependency-name: sha2
+        update-types: ["version-update:semver-minor", "version-update:semver-major"]
+      - dependency-name: hmac
+        update-types: ["version-update:semver-minor", "version-update:semver-major"]
 
 
   - package-ecosystem: github-actions
