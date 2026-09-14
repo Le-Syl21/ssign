@@ -42,7 +42,7 @@ pub fn fetch(client: &Client, token: &str) -> Result<Card> {
         })?
         .to_string();
 
-    // 2. fetch the certificate (a multipart with a `certificate` DER part).
+    // 2. fetch the certificate (a multipart with a `certificate` PEM part).
     let resp = run_task(
         client,
         token,

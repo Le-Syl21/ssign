@@ -1,8 +1,8 @@
 //! ssign-pkcs11 — a PKCS#11 module that signs with a Certum SimplySign **cloud**
 //! certificate over plain HTTPS.
 //!
-//! It exposes the cloud key to any tool that speaks PKCS#11 — osslsigncode,
-//! signtool, jsign — so they can sign **every** Authenticode format (PE, MSI,
+//! It exposes the cloud key to tools that speak PKCS#11 — osslsigncode is the one
+//! documented and tested — so they can sign **every** Authenticode format (PE, MSI,
 //! CAB, catalog, APPX, PowerShell…) while the cloud access, login and signature
 //! are handled here. No SimplySign Desktop, no p11-kit bridge, no smart card.
 //!
@@ -13,7 +13,8 @@
 //! Credentials are read from the environment on first use:
 //!   * `CERTUM_EMAIL` — the account e-mail (required)
 //!   * `CERTUM_OTP`   — the TOTP **seed**; the 6-digit code is derived here, or
-//!   * `CERTUM_TOKEN` — a current 6-digit code (used if `CERTUM_OTP` is unset)
+//!   * `CERTUM_TOKEN` — a current 6-digit code (takes precedence over `CERTUM_OTP`
+//!     when both are set)
 
 use std::error::Error;
 use std::sync::{Arc, Mutex, Once};

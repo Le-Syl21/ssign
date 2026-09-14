@@ -83,8 +83,10 @@ Two ways to authenticate — pick one:
 | **Automatic** | `-O, --otp <SEED>` | CI/scripts: give your TOTP **seed** once and `ssign` computes the 6-digit code every run. |
 | **Manual** | `-T, --token <CODE>` | On your own machine: read the **current** code from your authenticator and pass it. |
 
-Every flag also reads an environment variable, so nothing sensitive has to touch
-your shell history or the process list.
+The e-mail, seed and code options also read `CERTUM_EMAIL`, `CERTUM_OTP` and
+`CERTUM_TOKEN`, so nothing sensitive has to touch your shell history or the process
+list. After a login, the session is cached for 20 minutes and reused by the next
+run (and by `ssign-pkcs11`), so a single one-time code covers a whole batch.
 
 ```bash
 # Manual, local — paste the current code from your app:
@@ -277,8 +279,11 @@ Deux façons de s'authentifier — au choix :
 | **Automatique** | `-O, --otp <SEED>` | CI/scripts : fournissez votre **seed** TOTP une fois, `ssign` calcule le code à 6 chiffres à chaque exécution. |
 | **Manuel** | `-T, --token <CODE>` | Sur votre machine : lisez le code **courant** de votre appli d'authentification et passez-le. |
 
-Chaque option lit aussi une variable d'environnement — rien de sensible ne
-touche votre historique shell ni la liste des processus.
+Les options d'e-mail, de seed et de code lisent aussi `CERTUM_EMAIL`, `CERTUM_OTP`
+et `CERTUM_TOKEN` — rien de sensible ne touche votre historique shell ni la liste des
+processus. Après une connexion, la session est mise en cache 20 minutes et réutilisée
+par l'exécution suivante (et par `ssign-pkcs11`) : un seul code à usage unique couvre
+tout un lot.
 
 ```bash
 # Manuel, en local — collez le code courant de votre appli :

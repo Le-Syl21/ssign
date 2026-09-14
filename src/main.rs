@@ -18,14 +18,14 @@ use std::path::{Path, PathBuf};
 use std::time::{SystemTime, UNIX_EPOCH};
 use zeroize::{Zeroize, Zeroizing};
 
-/// Authenticode-sign Windows binaries (exe/dll/msi/sys) with a Certum SimplySign
+/// Authenticode-sign Windows PE binaries (exe/dll/sys) with a Certum SimplySign
 /// cloud certificate — cross-platform, no GUI, no vendor stack.
 #[derive(Parser, Debug)]
 #[command(name = "ssign", version, about, long_about = None)]
 #[command(after_long_help = USAGE_NOTES)]
 #[command(after_help = "Community & support: https://discord.gg/T37DYHmt2j")]
 struct Cli {
-    /// Files to sign (Authenticode: exe/dll/msi/sys). Signed in place unless -o.
+    /// PE files to sign (Authenticode: exe/dll/sys). Signed in place unless -o.
     #[arg(value_name = "FILES", required = true)]
     files: Vec<PathBuf>,
 
@@ -99,7 +99,7 @@ EXAMPLES
 
   # CI / automation (seed once, then unattended):
   export CERTUM_EMAIL=you@example.com CERTUM_OTP=BASE32SEED
-  ssign app.exe installer.msi driver.sys
+  ssign app.exe helper.dll driver.sys
 
 Community & support: https://discord.gg/T37DYHmt2j
 ";

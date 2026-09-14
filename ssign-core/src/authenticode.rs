@@ -135,7 +135,7 @@ pub fn pem_to_der(cert: &[u8]) -> Result<Vec<u8>> {
 pub struct Prepared {
     /// SHA-256 over the DER-encoded signed attributes — this is what Certum signs.
     pub to_be_signed: [u8; 32],
-    /// The whole file bytes (with any pre-existing signature stripped).
+    /// The whole file bytes (an already-signed file is refused by `embed`).
     pe: Vec<u8>,
     /// SpcIndirectData eContent (full SEQUENCE).
     spc_indirect: Vec<u8>,

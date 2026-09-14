@@ -25,7 +25,7 @@ PKCS#11-less signer possible.
 
 ## The flow, end to end
 
-Each step below maps to the module in `src/` that implements it.
+Each step below maps to the module in `ssign-core/src/` that implements it.
 
 ### 1 · Login — OAuth 2.0 authorization-code via the CAS IdP  (`auth.rs`)
 
@@ -61,9 +61,9 @@ After login, fetch the card and its certificate. Each is an **async task**
 
 - `POST /card/v1/cards/tasks`
   → card list: `{profile,label,cardno,pinrequired:false,maxkeysno,validthru}`
-- `POST /card/v1/cards/{serial}/keys/tasks` → keys (multipart)
+- `POST /card/v1/cards/{serial}/keys/tasks` → keys (multipart; not called by ssign)
 - `POST /card/v1/cards/{serial}/certificates/tasks` → certificates (multipart;
-  the signing certificate as DER)
+  the signing certificate as PEM)
 
 `pinrequired` is **`false`** — the card needs no PIN; the bearer token is the
 sole control. The exposed key is RSA-4096; the private key stays in the cloud HSM.
@@ -82,7 +82,7 @@ Three calls, all `Authorization: Bearer`:
    - **`req`** (`application/json;charset=UTF-8`):
      `{"digests":["<SHA-256 hex, 64 chars>"],"digesttype":"SHA256"}`
    - **`certificate`** (`application/octet-stream`, filename `blob`): the signing
-     cert (DER)
+     cert exactly as issued (PEM); the endpoint rejects a DER re-encoding
    → resp `{"state":…,"atom:link":<poll URL>,"message":…,"ping-after":<ms>}`
 2. `GET /scs1/card/v1/cards/{serial}/certificates/signature/task/{taskId}` → `303`
    → `{"state":…,"atom:link":<result URL>,"message":…}` — poll until ready
