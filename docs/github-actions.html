@@ -1,0 +1,128 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Authenticode code signing in GitHub Actions with Certum SimplySign – ssign</title>
+<meta name="description" content="Sign Windows executables with a Certum SimplySign cloud certificate in GitHub Actions, on an ubuntu-latest runner, with a protected environment so the owner approves every signing run.">
+<link rel="canonical" href="https://le-syl21.github.io/ssign/github-actions.html">
+<link rel="alternate" hreflang="en" href="https://le-syl21.github.io/ssign/github-actions.html">
+<link rel="alternate" hreflang="fr" href="https://le-syl21.github.io/ssign/fr/github-actions.html">
+<link rel="alternate" hreflang="x-default" href="https://le-syl21.github.io/ssign/github-actions.html">
+<meta property="og:type" content="website">
+<meta property="og:site_name" content="ssign">
+<meta property="og:title" content="Authenticode code signing in GitHub Actions with Certum SimplySign – ssign">
+<meta property="og:description" content="Sign Windows executables with a Certum SimplySign cloud certificate in GitHub Actions, on an ubuntu-latest runner, with a protected environment so the owner approves every signing run.">
+<meta property="og:url" content="https://le-syl21.github.io/ssign/github-actions.html">
+<meta property="og:image" content="https://le-syl21.github.io/ssign/img/og.jpg">
+<meta property="og:image:width" content="1200">
+<meta property="og:image:height" content="630">
+<meta property="og:locale" content="en_GB">
+<meta property="og:locale:alternate" content="fr_FR">
+<meta name="twitter:card" content="summary_large_image">
+<meta name="twitter:title" content="Authenticode code signing in GitHub Actions with Certum SimplySign – ssign">
+<meta name="twitter:description" content="Sign Windows executables with a Certum SimplySign cloud certificate in GitHub Actions, on an ubuntu-latest runner, with a protected environment so the owner approves every signing run.">
+<meta name="twitter:image" content="https://le-syl21.github.io/ssign/img/og.jpg">
+<meta name="color-scheme" content="light dark">
+<link rel="icon" type="image/svg+xml" href="img/favicon.svg">
+<link rel="stylesheet" href="style.css">
+<script type="application/ld+json">{"@context": "https://schema.org", "@graph": [{"@type": "SoftwareApplication", "@id": "https://le-syl21.github.io/ssign/#app", "name": "ssign", "description": "Command-line tool that Authenticode-signs Windows binaries with a Certum SimplySign cloud certificate from Linux, macOS or Windows, without SimplySign Desktop.", "applicationCategory": "DeveloperApplication", "operatingSystem": "Linux, macOS, Windows", "url": "https://le-syl21.github.io/ssign/", "downloadUrl": "https://github.com/Le-Syl21/ssign/releases/latest", "license": "https://opensource.org/licenses/MIT", "codeRepository": "https://github.com/Le-Syl21/ssign", "offers": {"@type": "Offer", "price": "0", "priceCurrency": "EUR"}, "softwareVersion": "0.1.5"}, {"@type": "WebPage", "name": "Authenticode code signing in GitHub Actions with Certum SimplySign – ssign", "description": "Sign Windows executables with a Certum SimplySign cloud certificate in GitHub Actions, on an ubuntu-latest runner, with a protected environment so the owner approves every signing run.", "url": "https://le-syl21.github.io/ssign/github-actions.html", "inLanguage": "en", "about": {"@id": "https://le-syl21.github.io/ssign/#app"}}]}</script>
+</head>
+<body>
+<header class="site"><div class="wrap">
+<a class="brand" href="./"><img src="img/favicon.svg" alt="" width="24" height="24"><span>s<b>sign</b></span></a>
+<nav class="main"><a href="./">Home</a><a href="download.html">Download</a><a href="getting-started.html">Get started</a><a href="github-actions.html" aria-current="page">GitHub Actions</a><a href="pkcs11.html">PKCS#11</a><a href="security.html">Security</a><a href="faq.html">FAQ</a></nav>
+<a class="lang" href="fr/github-actions.html" hreflang="fr" lang="fr"><img src="img/fr.svg" alt="" width="21" height="14">Version française</a>
+</div></header>
+<main><div class="wrap">
+<h1>Code signing in GitHub Actions with Certum SimplySign</h1>
+<p class="lead">ssign runs on a Linux runner and signs Windows binaries there: no Windows runner, no SimplySign Desktop,
+no container. The account e-mail and the TOTP seed come from environment secrets.</p>
+
+<h2>A signing workflow</h2>
+<pre><code>name: Sign
+
+on:
+  workflow_dispatch:        # manual only — each run performs a real cloud signature
+
+jobs:
+  sign:
+    runs-on: ubuntu-latest
+    environment: signing    # ← protected environment; see next section
+    steps:
+      - uses: actions/checkout@v4
+      - run: cargo install ssign
+      - run: ssign dist/*.exe
+        env:
+          CERTUM_EMAIL: ${{ secrets.CERTUM_EMAIL }}
+          CERTUM_OTP:   ${{ secrets.CERTUM_OTP }}
+      - uses: actions/upload-artifact@v4
+        with: { name: signed, path: dist/ }</code></pre>
+<p><code>CERTUM_OTP</code> holds your TOTP <strong>seed</strong>, the long-lived secret that lets anyone sign as you.
+Store it as described below, not as a plain repository secret.</p>
+
+<h2 id="approval">Require the owner's approval for every signing run</h2>
+<p>Signing uses your certificate and, if mishandled, can expose the seed. Gate it behind a <strong>GitHub
+Environment</strong>, so that the repository owner must approve every signing run before the job can even read the
+secrets:</p>
+<ol>
+<li><strong>Settings → Environments → New environment</strong>, name it <code>signing</code>.</li>
+<li>Add a <strong>Deployment protection rule → Required reviewers</strong>, and add yourself (the owner). Any job that
+targets this environment now <strong>pauses for your approval</strong>.</li>
+<li>Store <code>CERTUM_EMAIL</code> and <code>CERTUM_OTP</code> as <strong>environment secrets</strong> of
+<code>signing</code> (not repository secrets). They are readable <strong>only</strong> inside an approved run of a job
+that declares <code>environment: signing</code>.</li>
+<li>In the workflow, the signing job declares <code>environment: signing</code>, as above.</li>
+</ol>
+<p>Result: a pull request, even a malicious one, <strong>cannot</strong> trigger a signature or read the seed; every
+run waits for the owner's click. Also keep the signing job on <code>workflow_dispatch</code> or protected-branch
+pushes, <strong>never</strong> on <code>pull_request</code> from forks.</p>
+
+<h2 id="release">In a release pipeline</h2>
+<p>Make signing a <strong>job in the same workflow</strong> as the build and the release, gated by
+<code>environment: signing</code>, with the release job listing it in <code>needs:</code>. A tag then becomes
+<em>build → approve → signed release</em>. Do not rely on a separate workflow triggered by
+<code>release: published</code>: a release created by the built-in <code>GITHUB_TOKEN</code> <strong>does not</strong>
+trigger other workflows.</p>
+
+<h2>A real example: ssign signs its own Windows release</h2>
+<p>ssign's release workflow does exactly this. On each version tag, a job on <code>ubuntu-latest</code> takes the Linux
+<code>ssign</code> binary built earlier in the same run, waits for approval through the <code>signing</code>
+environment, signs the Windows <code>ssign.exe</code> and <code>ssign_pkcs11.dll</code> with a single Certum login,
+then checks both with <code>osslsigncode verify</code>. The release job waits for it. Abridged:</p>
+<pre><code>  sign-windows:
+    needs: build
+    if: startsWith(github.ref, &#x27;refs/tags/v&#x27;)
+    runs-on: ubuntu-latest
+    environment: signing
+    steps:
+      # …download the Linux ssign and the Windows artifacts built earlier in the run…
+      - name: Sign the Windows binary + module with ssign (via Certum)
+        env:
+          CERTUM_EMAIL: ${{ secrets.CERTUM_EMAIL }}
+          CERTUM_OTP: ${{ secrets.CERTUM_OTP }}
+        run: |
+          unzip -o dl/ssign-windows-x86_64.zip -d dl
+          unzip -o dl/ssign-pkcs11-windows-x86_64.zip -d dl
+          # One Certum login signs both the CLI and the module.
+          ssign --verbose \
+            -n &quot;ssign&quot; -u &quot;https://github.com/${{ github.repository }}&quot; \
+            dl/ssign.exe dl/ssign_pkcs11.dll
+
+  release:
+    needs: [build, sign-windows, sign-apple]</code></pre>
+<p>The full file: <a href="https://github.com/Le-Syl21/ssign/blob/main/.github/workflows/ci.yml">.github/workflows/ci.yml</a>.</p>
+
+<h2>Several files, one login</h2>
+<p>Pass every file to one <code>ssign</code> call, as above: it logs in once for the whole batch. If a later step signs
+other formats with the <a href="pkcs11.html">PKCS#11 module</a> in the same job, the module reuses the cached session
+instead of logging in again (see <a href="security.html#cache">the session cache</a>).</p>
+</div></main>
+<footer class="site"><div class="wrap">
+<a href="https://github.com/Le-Syl21/ssign">Source code and issues on GitHub</a>
+<a href="https://discord.gg/T37DYHmt2j">Discord</a>
+<a href="https://crates.io/crates/ssign">crates.io</a>
+<span>ssign is free software under the MIT licence. It is an independent client, not affiliated with or endorsed by Certum / Asseco; “Certum” and “SimplySign” are their trademarks.</span>
+</div></footer>
+</body>
+</html>

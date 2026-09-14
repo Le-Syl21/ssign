@@ -1,0 +1,110 @@
+<!doctype html>
+<html lang="fr">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Module PKCS#11 osslsigncode pour Certum SimplySign : signer MSI, CAB, scripts – ssign</title>
+<meta name="description" content="ssign-pkcs11 présente votre clé cloud Certum SimplySign à osslsigncode via PKCS#11, pour signer MSI, CAB, catalogues, APPX et scripts PowerShell sous Linux ou macOS, sans SimplySign Desktop.">
+<link rel="canonical" href="https://le-syl21.github.io/ssign/fr/pkcs11.html">
+<link rel="alternate" hreflang="en" href="https://le-syl21.github.io/ssign/pkcs11.html">
+<link rel="alternate" hreflang="fr" href="https://le-syl21.github.io/ssign/fr/pkcs11.html">
+<link rel="alternate" hreflang="x-default" href="https://le-syl21.github.io/ssign/pkcs11.html">
+<meta property="og:type" content="website">
+<meta property="og:site_name" content="ssign">
+<meta property="og:title" content="Module PKCS#11 osslsigncode pour Certum SimplySign : signer MSI, CAB, scripts – ssign">
+<meta property="og:description" content="ssign-pkcs11 présente votre clé cloud Certum SimplySign à osslsigncode via PKCS#11, pour signer MSI, CAB, catalogues, APPX et scripts PowerShell sous Linux ou macOS, sans SimplySign Desktop.">
+<meta property="og:url" content="https://le-syl21.github.io/ssign/fr/pkcs11.html">
+<meta property="og:image" content="https://le-syl21.github.io/ssign/img/og.jpg">
+<meta property="og:image:width" content="1200">
+<meta property="og:image:height" content="630">
+<meta property="og:locale" content="fr_FR">
+<meta property="og:locale:alternate" content="en_GB">
+<meta name="twitter:card" content="summary_large_image">
+<meta name="twitter:title" content="Module PKCS#11 osslsigncode pour Certum SimplySign : signer MSI, CAB, scripts – ssign">
+<meta name="twitter:description" content="ssign-pkcs11 présente votre clé cloud Certum SimplySign à osslsigncode via PKCS#11, pour signer MSI, CAB, catalogues, APPX et scripts PowerShell sous Linux ou macOS, sans SimplySign Desktop.">
+<meta name="twitter:image" content="https://le-syl21.github.io/ssign/img/og.jpg">
+<meta name="color-scheme" content="light dark">
+<link rel="icon" type="image/svg+xml" href="../img/favicon.svg">
+<link rel="stylesheet" href="../style.css">
+<script type="application/ld+json">{"@context": "https://schema.org", "@graph": [{"@type": "SoftwareApplication", "@id": "https://le-syl21.github.io/ssign/#app", "name": "ssign", "description": "Outil en ligne de commande qui signe en Authenticode les binaires Windows avec un certificat cloud Certum SimplySign depuis Linux, macOS ou Windows, sans SimplySign Desktop.", "applicationCategory": "DeveloperApplication", "operatingSystem": "Linux, macOS, Windows", "url": "https://le-syl21.github.io/ssign/", "downloadUrl": "https://github.com/Le-Syl21/ssign/releases/latest", "license": "https://opensource.org/licenses/MIT", "codeRepository": "https://github.com/Le-Syl21/ssign", "offers": {"@type": "Offer", "price": "0", "priceCurrency": "EUR"}, "softwareVersion": "0.1.5"}, {"@type": "WebPage", "name": "Module PKCS#11 osslsigncode pour Certum SimplySign : signer MSI, CAB, scripts – ssign", "description": "ssign-pkcs11 présente votre clé cloud Certum SimplySign à osslsigncode via PKCS#11, pour signer MSI, CAB, catalogues, APPX et scripts PowerShell sous Linux ou macOS, sans SimplySign Desktop.", "url": "https://le-syl21.github.io/ssign/fr/pkcs11.html", "inLanguage": "fr", "about": {"@id": "https://le-syl21.github.io/ssign/#app"}}]}</script>
+</head>
+<body>
+<header class="site"><div class="wrap">
+<a class="brand" href="./"><img src="../img/favicon.svg" alt="" width="24" height="24"><span>s<b>sign</b></span></a>
+<nav class="main"><a href="./">Accueil</a><a href="download.html">Télécharger</a><a href="getting-started.html">Prise en main</a><a href="github-actions.html">GitHub Actions</a><a href="pkcs11.html" aria-current="page">PKCS#11</a><a href="security.html">Sécurité</a><a href="faq.html">FAQ</a></nav>
+<a class="lang" href="../pkcs11.html" hreflang="en" lang="en"><img src="../img/gb.svg" alt="" width="21" height="14">English version</a>
+</div></header>
+<main><div class="wrap">
+<h1>Signer tous les formats : le module PKCS#11 pour osslsigncode</h1>
+<p class="lead">La commande <code>ssign</code> signe les fichiers PE (<code>.exe</code>, <code>.dll</code>,
+<code>.sys</code>…). Pour tous les autres formats Authenticode (MSI, CAB, catalogues, APPX, PowerShell), ssign fournit
+aussi un module PKCS#11, <code>ssign-pkcs11</code>, qui présente votre clé cloud Certum à
+<a href="https://github.com/mtrojnar/osslsigncode">osslsigncode</a>, lequel sait déjà tous les hacher et les emballer. Toujours sans SimplySign
+Desktop, sans p11-kit, sans carte à puce : le module parle au cloud en HTTPS comme le reste de ssign.</p>
+
+<h2>1. Obtenir le module</h2>
+<ul>
+<li>Téléchargez-le depuis la <a href="download.html#pkcs11">page de téléchargement</a> :
+<code>libssign_pkcs11.so</code> sous Linux, <code>libssign_pkcs11.dylib</code> sous macOS,
+<code>ssign_pkcs11.dll</code> sous Windows.</li>
+<li>Ou compilez-le depuis un clone du dépôt : <code>cargo build -p ssign-pkcs11 --release</code>.</li>
+</ul>
+
+<h2>2. Installer osslsigncode</h2>
+<p>osslsigncode a besoin soit du fournisseur (provider) PKCS#11 d'OpenSSL, soit du moteur (engine) libp11 : il charge
+<code>pkcs11prov</code> s'il est présent, et se rabat sinon sur le moteur. Les deux fonctionnent avec le module. Sous
+Debian ou Ubuntu :</p>
+<pre><code>apt-get install osslsigncode libengine-pkcs11-openssl</code></pre>
+
+<h2>3. Récupérer le certificat intermédiaire Certum</h2>
+<p>L'option <code>-ac</code> intègre l'intermédiaire Certum « Code Signing 2021 CA » pour que la chaîne se vérifie. Le
+dépôt le fournit au format DER dans <a href="https://github.com/Le-Syl21/ssign/blob/main/ssign-core/src/certs/ccsca2021.der"><code>ssign-core/src/certs/ccsca2021.der</code></a> ;
+convertissez-le en PEM avec OpenSSL :</p>
+<pre><code>openssl x509 -inform DER -in ccsca2021.der -out certum-code-signing-2021-ca.pem</code></pre>
+
+<h2>4. Signer</h2>
+<pre><code>cargo build -p ssign-pkcs11 --release   # → target/release/libssign_pkcs11.so
+
+export CERTUM_EMAIL=vous@example.com CERTUM_OTP=GRAINE_BASE32
+osslsigncode sign \
+  -pkcs11module ./target/release/libssign_pkcs11.so \
+  -pkcs11cert &#x27;pkcs11:type=cert&#x27; -key &#x27;pkcs11:type=private&#x27; \
+  -ac certum-code-signing-2021-ca.pem \
+  -h sha256 -t http://time.certum.pl/ \
+  -in installeur.msi -out installeur-signe.msi</code></pre>
+<p>Indiquez le chemin du module téléchargé ou compilé. Le module lit les mêmes <code>CERTUM_EMAIL</code> et
+<code>CERTUM_OTP</code> (ou <code>CERTUM_TOKEN</code>, un code à 6 chiffres en cours de validité) que la commande.</p>
+<p>Le module présente un seul certificat et une seule clé privée, tous deux nommés
+<code>Certum SimplySign (ssign)</code> : <code>pkcs11:type=cert</code> et <code>pkcs11:type=private</code> suffisent donc.
+Le script de test du dépôt les désigne par leur nom :</p>
+<pre><code>pkcs11:object=Certum%20SimplySign%20%28ssign%29;type=cert
+pkcs11:object=Certum%20SimplySign%20%28ssign%29;type=private</code></pre>
+
+<h2>Plusieurs fichiers, un seul code</h2>
+<p>osslsigncode recharge le module pour chaque fichier, et Certum n'accepte chaque code qu'une fois. Le module
+<strong>garde donc la session cloud en cache</strong> (le même cache que la commande <code>ssign</code>) : signer de
+nombreux fichiers d'affilée ne demande qu'un seul code. Vous pouvez signer vos fichiers PE avec <code>ssign</code>, puis
+votre MSI avec osslsigncode, avec une seule connexion. Voir <a href="security.html#cache">le cache de session</a>.</p>
+
+<h2>Testé de bout en bout</h2>
+<p><a href="https://github.com/Le-Syl21/ssign/blob/main/ssign-pkcs11/tests/sign-all-formats.sh"><code>ssign-pkcs11/tests/sign-all-formats.sh</code></a> signe et vérifie un fichier de chacun
+de ces formats via le module et osslsigncode : <code>.exe</code>, <code>.dll</code>, <code>.msi</code> et
+<code>.ps1</code>. CAB, CAT et APPX fonctionnent aussi dès qu'on lui fournit un fichier d'exemple, puisque osslsigncode
+les signe ; le script ne les génère simplement pas. Depuis un clone du dépôt, module compilé :</p>
+<pre><code>CERTUM_EMAIL=you@example.com CERTUM_OTP=SEED \
+  ssign-pkcs11/tests/sign-all-formats.sh</code></pre>
+
+<h2>Limites</h2>
+<ul>
+<li>SHA-256 avec RSA PKCS#1 v1.5 uniquement : passez <code>-h sha256</code>.</li>
+<li>Le module signe ; il ne génère pas de clés et ne vérifie pas les signatures.</li>
+</ul>
+</div></main>
+<footer class="site"><div class="wrap">
+<a href="https://github.com/Le-Syl21/ssign">Code source et tickets sur GitHub</a>
+<a href="https://discord.gg/T37DYHmt2j">Discord</a>
+<a href="https://crates.io/crates/ssign">crates.io</a>
+<span>ssign est un logiciel libre sous licence MIT. C'est un client indépendant, sans lien avec Certum / Asseco ni approuvé par eux ; « Certum » et « SimplySign » sont leurs marques.</span>
+</div></footer>
+</body>
+</html>

@@ -1,0 +1,110 @@
+<!doctype html>
+<html lang="fr">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Signer un exécutable Windows sous Linux avec Certum SimplySign – prise en main de ssign</title>
+<meta name="description" content="Comment signer un .exe ou une .dll Windows sous Linux ou macOS avec un certificat cloud Certum SimplySign : code à usage unique ou graine TOTP, signature par lots, options et variables d&#x27;environnement de ssign.">
+<link rel="canonical" href="https://le-syl21.github.io/ssign/fr/getting-started.html">
+<link rel="alternate" hreflang="en" href="https://le-syl21.github.io/ssign/getting-started.html">
+<link rel="alternate" hreflang="fr" href="https://le-syl21.github.io/ssign/fr/getting-started.html">
+<link rel="alternate" hreflang="x-default" href="https://le-syl21.github.io/ssign/getting-started.html">
+<meta property="og:type" content="website">
+<meta property="og:site_name" content="ssign">
+<meta property="og:title" content="Signer un exécutable Windows sous Linux avec Certum SimplySign – prise en main de ssign">
+<meta property="og:description" content="Comment signer un .exe ou une .dll Windows sous Linux ou macOS avec un certificat cloud Certum SimplySign : code à usage unique ou graine TOTP, signature par lots, options et variables d&#x27;environnement de ssign.">
+<meta property="og:url" content="https://le-syl21.github.io/ssign/fr/getting-started.html">
+<meta property="og:image" content="https://le-syl21.github.io/ssign/img/og.jpg">
+<meta property="og:image:width" content="1200">
+<meta property="og:image:height" content="630">
+<meta property="og:locale" content="fr_FR">
+<meta property="og:locale:alternate" content="en_GB">
+<meta name="twitter:card" content="summary_large_image">
+<meta name="twitter:title" content="Signer un exécutable Windows sous Linux avec Certum SimplySign – prise en main de ssign">
+<meta name="twitter:description" content="Comment signer un .exe ou une .dll Windows sous Linux ou macOS avec un certificat cloud Certum SimplySign : code à usage unique ou graine TOTP, signature par lots, options et variables d&#x27;environnement de ssign.">
+<meta name="twitter:image" content="https://le-syl21.github.io/ssign/img/og.jpg">
+<meta name="color-scheme" content="light dark">
+<link rel="icon" type="image/svg+xml" href="../img/favicon.svg">
+<link rel="stylesheet" href="../style.css">
+<script type="application/ld+json">{"@context": "https://schema.org", "@graph": [{"@type": "SoftwareApplication", "@id": "https://le-syl21.github.io/ssign/#app", "name": "ssign", "description": "Outil en ligne de commande qui signe en Authenticode les binaires Windows avec un certificat cloud Certum SimplySign depuis Linux, macOS ou Windows, sans SimplySign Desktop.", "applicationCategory": "DeveloperApplication", "operatingSystem": "Linux, macOS, Windows", "url": "https://le-syl21.github.io/ssign/", "downloadUrl": "https://github.com/Le-Syl21/ssign/releases/latest", "license": "https://opensource.org/licenses/MIT", "codeRepository": "https://github.com/Le-Syl21/ssign", "offers": {"@type": "Offer", "price": "0", "priceCurrency": "EUR"}, "softwareVersion": "0.1.5"}, {"@type": "WebPage", "name": "Signer un exécutable Windows sous Linux avec Certum SimplySign – prise en main de ssign", "description": "Comment signer un .exe ou une .dll Windows sous Linux ou macOS avec un certificat cloud Certum SimplySign : code à usage unique ou graine TOTP, signature par lots, options et variables d'environnement de ssign.", "url": "https://le-syl21.github.io/ssign/fr/getting-started.html", "inLanguage": "fr", "about": {"@id": "https://le-syl21.github.io/ssign/#app"}}]}</script>
+</head>
+<body>
+<header class="site"><div class="wrap">
+<a class="brand" href="./"><img src="../img/favicon.svg" alt="" width="24" height="24"><span>s<b>sign</b></span></a>
+<nav class="main"><a href="./">Accueil</a><a href="download.html">Télécharger</a><a href="getting-started.html" aria-current="page">Prise en main</a><a href="github-actions.html">GitHub Actions</a><a href="pkcs11.html">PKCS#11</a><a href="security.html">Sécurité</a><a href="faq.html">FAQ</a></nav>
+<a class="lang" href="../getting-started.html" hreflang="en" lang="en"><img src="../img/gb.svg" alt="" width="21" height="14">English version</a>
+</div></header>
+<main><div class="wrap">
+<h1>Signer un exécutable Windows sous Linux avec Certum SimplySign</h1>
+<p class="lead">Les mêmes commandes fonctionnent sous Linux, macOS et Windows. Il vous faut l'e-mail de votre compte
+Certum et votre appli d'authentification. <a href="download.html">Téléchargez ssign</a> d'abord si ce n'est pas
+fait.</p>
+
+<h2>1. Choisir le mode de connexion</h2>
+<p>La connexion au cloud SimplySign se fait avec votre e-mail et un code à usage unique à 6 chiffres, pas avec un mot
+de passe. Donnez à ssign exactement l'un des deux :</p>
+<div class="table"><table class="modes"><thead><tr><th>Mode</th><th>Option</th><th>Quand</th></tr></thead><tbody>
+<tr><td><strong>Manuel</strong></td><td><code>-T</code>, <code>--token &lt;CODE&gt;</code></td><td>Sur votre machine : lisez le code
+<strong>du moment</strong> dans votre appli d'authentification et passez-le.</td></tr>
+<tr><td><strong>Automatique</strong></td><td><code>-O</code>, <code>--otp &lt;SEED&gt;</code></td><td>CI et scripts : fournissez une
+fois votre <strong>graine</strong> TOTP (seed), et ssign calcule le code à 6 chiffres à chaque exécution.</td></tr>
+</tbody></table></div>
+<div class="note"><strong>La graine est un secret à longue durée.</strong> Avec votre graine et votre e-mail, n'importe
+qui peut signer du code en votre nom jusqu'à ce que vous régénériez le QR code SimplySign. Ne la passez jamais en
+argument de ligne de commande : utilisez la variable d'environnement <code>CERTUM_OTP</code>, et préférez
+<code>--token</code> quand vous signez à la main. <a href="security.html">Lire les notes de sécurité</a>.</div>
+
+<h2>2. Signer</h2>
+<pre><code># Manuel, en local — collez le code courant de votre appli :
+ssign -e vous@example.com -T 123456 app.exe
+
+# Automatisation — la graine une fois, puis sans intervention :
+export CERTUM_EMAIL=vous@example.com
+export CERTUM_OTP=VOTRE_GRAINE_TOTP_BASE32       # ou l&#x27;URI otpauth:// complète
+ssign app.exe installeur.dll pilote.sys</code></pre>
+<p>Les fichiers sont signés <strong>sur place</strong> par défaut. <code>--backup</code> garde l'original sous le nom
+<code>&lt;fichier&gt;.orig</code> ; <code>-o &lt;DIR&gt;</code> écrit plutôt les fichiers signés dans un autre dossier.
+ssign affiche <code>signed &lt;fichier&gt;</code> pour chaque fichier ; ajoutez <code>-v</code> pour voir chaque
+étape.</p>
+
+<h2>3. Vérifier le résultat</h2>
+<p>ssign ne vérifie pas les signatures. Utilisez <code>osslsigncode verify app.exe</code>, ou <code>signtool</code>
+sous Windows.</p>
+
+<h2 id="options">Toutes les options</h2>
+<div class="table"><table class="opts"><thead><tr><th>Option</th><th>Variable d'environnement</th><th>Effet</th></tr></thead><tbody><tr><td data-label="Option"><code>FILES</code></td><td data-label="Variable d'environnement">–</td><td data-label="Effet">Les fichiers à signer. Signés sur place, sauf avec <code>-o</code>.</td></tr><tr><td data-label="Option"><code>-e, --email &lt;EMAIL&gt;</code></td><td data-label="Variable d'environnement"><code>CERTUM_EMAIL</code></td><td data-label="Effet">E-mail du compte Certum. Obligatoire.</td></tr><tr><td data-label="Option"><code>-O, --otp &lt;SEED&gt;</code></td><td data-label="Variable d'environnement"><code>CERTUM_OTP</code></td><td data-label="Effet">Graine TOTP (en base32, ou une URI <code>otpauth://</code> complète) : ssign calcule lui-même le code à 6 chiffres. Pour la CI et l'automatisation.</td></tr><tr><td data-label="Option"><code>-T, --token &lt;CODE&gt;</code></td><td data-label="Variable d'environnement"><code>CERTUM_TOKEN</code></td><td data-label="Effet">Un code à 6 chiffres en cours de validité, lu dans votre appli d'authentification. Pour une signature manuelle ponctuelle.</td></tr><tr><td data-label="Option"><code>-o, --output-dir &lt;DIR&gt;</code></td><td data-label="Variable d'environnement">–</td><td data-label="Effet">Écrit les fichiers signés dans ce dossier (créé au besoin) au lieu d'écraser les originaux.</td></tr><tr><td data-label="Option"><code>--timestamp-url &lt;URL&gt;</code></td><td data-label="Variable d'environnement">–</td><td data-label="Effet">Serveur d'horodatage RFC 3161. Par défaut : <code>http://time.certum.pl/</code>.</td></tr><tr><td data-label="Option"><code>-n, --name &lt;TEXT&gt;</code></td><td data-label="Variable d'environnement">–</td><td data-label="Effet">Description de la signature, intégrée au fichier.</td></tr><tr><td data-label="Option"><code>-u, --url &lt;URL&gt;</code></td><td data-label="Variable d'environnement">–</td><td data-label="Effet">URL d'information de la signature, intégrée au fichier.</td></tr><tr><td data-label="Option"><code>--backup</code></td><td data-label="Variable d'environnement">–</td><td data-label="Effet">En signature sur place, garde l'original à côté sous le nom <code>&lt;fichier&gt;.orig</code>.</td></tr><tr><td data-label="Option"><code>-v, --verbose</code></td><td data-label="Variable d'environnement">–</td><td data-label="Effet">Affiche chaque étape (connexion ou session en cache, carte, chaque fichier).</td></tr><tr><td data-label="Option"><code>-h, --help / -V, --version</code></td><td data-label="Variable d'environnement">–</td><td data-label="Effet">Affiche l'aide ou la version.</td></tr></tbody></table></div>
+<p>Seuls l'e-mail, la graine et le code peuvent venir de variables d'environnement. Préférez-les pour les secrets : une
+valeur passée en ligne de commande est visible dans l'historique du shell et dans la liste des processus. Passer à la
+fois <code>--otp</code> et <code>--token</code> est une erreur.</p>
+
+<h2>La graine : base32 ou URI otpauth://</h2>
+<p><code>--otp</code> accepte un secret base32 brut ou une URI <code>otpauth://</code> complète. Avec un secret brut,
+ssign applique les réglages de SimplySign : SHA-256 (et non le SHA-1 par défaut de la plupart des bibliothèques TOTP),
+6 chiffres, 30 secondes. Avec une URI, l'algorithme, le nombre de chiffres et la période sont lus dans l'URI. Le code
+est calculé à partir de l'horloge du système.</p>
+
+<h2>Une connexion pour de nombreux fichiers</h2>
+<p>ssign se connecte une fois par exécution et signe tous les fichiers listés avec cette session. Il garde aussi la
+session pendant 20 minutes : les exécutions suivantes dans ce délai, ainsi que le <a href="pkcs11.html">module
+PKCS#11</a>, signent sans nouveau code. C'est important, car Certum n'accepte chaque code qu'une seule fois. Où la
+session est stockée, et ce que cela implique : <a href="security.html#cache">le cache de session</a>.</p>
+
+<h2>Bon à savoir</h2>
+<ul>
+<li>ssign refuse de signer un fichier PE qui porte déjà une signature (« file already has a signature »).</li>
+<li>Avec <code>--backup</code>, un fichier <code>.orig</code> existant n'est jamais écrasé : l'exécution s'arrête et le
+fichier reste intact.</li>
+<li>Le fichier signé est d'abord écrit dans un fichier temporaire puis mis en place d'un coup, et il garde les
+permissions du fichier qu'il remplace.</li>
+<li><code>-n</code> et <code>-u</code> intègrent une description et une URL d'information dans la signature.</li>
+</ul>
+<p>Vous signez dans un pipeline ? Continuez avec <a href="github-actions.html">GitHub Actions</a>.</p>
+</div></main>
+<footer class="site"><div class="wrap">
+<a href="https://github.com/Le-Syl21/ssign">Code source et tickets sur GitHub</a>
+<a href="https://discord.gg/T37DYHmt2j">Discord</a>
+<a href="https://crates.io/crates/ssign">crates.io</a>
+<span>ssign est un logiciel libre sous licence MIT. C'est un client indépendant, sans lien avec Certum / Asseco ni approuvé par eux ; « Certum » et « SimplySign » sont leurs marques.</span>
+</div></footer>
+</body>
+</html>

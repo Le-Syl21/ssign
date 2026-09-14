@@ -1,0 +1,113 @@
+<!doctype html>
+<html lang="fr">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>ssign – signer un exécutable Windows sous Linux avec Certum SimplySign, sans SimplySign Desktop</title>
+<meta name="description" content="Signez vos exécutables Windows (Authenticode) avec un certificat cloud Certum SimplySign depuis Linux, macOS ou Windows, en HTTPS, sans SimplySign Desktop. Outil libre pour la CI et GitHub Actions.">
+<meta name="google-site-verification" content="TqbXre6qrm9jaoj6tFwRRiI2vuQilAZLm6kUJA-etmo">
+<link rel="canonical" href="https://le-syl21.github.io/ssign/fr/">
+<link rel="alternate" hreflang="en" href="https://le-syl21.github.io/ssign/">
+<link rel="alternate" hreflang="fr" href="https://le-syl21.github.io/ssign/fr/">
+<link rel="alternate" hreflang="x-default" href="https://le-syl21.github.io/ssign/">
+<meta property="og:type" content="website">
+<meta property="og:site_name" content="ssign">
+<meta property="og:title" content="ssign – signer un exécutable Windows sous Linux avec Certum SimplySign, sans SimplySign Desktop">
+<meta property="og:description" content="Signez vos exécutables Windows (Authenticode) avec un certificat cloud Certum SimplySign depuis Linux, macOS ou Windows, en HTTPS, sans SimplySign Desktop. Outil libre pour la CI et GitHub Actions.">
+<meta property="og:url" content="https://le-syl21.github.io/ssign/fr/">
+<meta property="og:image" content="https://le-syl21.github.io/ssign/img/og.jpg">
+<meta property="og:image:width" content="1200">
+<meta property="og:image:height" content="630">
+<meta property="og:locale" content="fr_FR">
+<meta property="og:locale:alternate" content="en_GB">
+<meta name="twitter:card" content="summary_large_image">
+<meta name="twitter:title" content="ssign – signer un exécutable Windows sous Linux avec Certum SimplySign, sans SimplySign Desktop">
+<meta name="twitter:description" content="Signez vos exécutables Windows (Authenticode) avec un certificat cloud Certum SimplySign depuis Linux, macOS ou Windows, en HTTPS, sans SimplySign Desktop. Outil libre pour la CI et GitHub Actions.">
+<meta name="twitter:image" content="https://le-syl21.github.io/ssign/img/og.jpg">
+<meta name="color-scheme" content="light dark">
+<link rel="icon" type="image/svg+xml" href="../img/favicon.svg">
+<link rel="stylesheet" href="../style.css">
+<script type="application/ld+json">{"@context": "https://schema.org", "@graph": [{"@type": "SoftwareApplication", "@id": "https://le-syl21.github.io/ssign/#app", "name": "ssign", "description": "Outil en ligne de commande qui signe en Authenticode les binaires Windows avec un certificat cloud Certum SimplySign depuis Linux, macOS ou Windows, sans SimplySign Desktop.", "applicationCategory": "DeveloperApplication", "operatingSystem": "Linux, macOS, Windows", "url": "https://le-syl21.github.io/ssign/", "downloadUrl": "https://github.com/Le-Syl21/ssign/releases/latest", "license": "https://opensource.org/licenses/MIT", "codeRepository": "https://github.com/Le-Syl21/ssign", "offers": {"@type": "Offer", "price": "0", "priceCurrency": "EUR"}, "softwareVersion": "0.1.5"}, {"@type": "WebPage", "name": "ssign – signer un exécutable Windows sous Linux avec Certum SimplySign, sans SimplySign Desktop", "description": "Signez vos exécutables Windows (Authenticode) avec un certificat cloud Certum SimplySign depuis Linux, macOS ou Windows, en HTTPS, sans SimplySign Desktop. Outil libre pour la CI et GitHub Actions.", "url": "https://le-syl21.github.io/ssign/fr/", "inLanguage": "fr", "about": {"@id": "https://le-syl21.github.io/ssign/#app"}}]}</script>
+</head>
+<body>
+<header class="site"><div class="wrap">
+<a class="brand" href="./"><img src="../img/favicon.svg" alt="" width="24" height="24"><span>s<b>sign</b></span></a>
+<nav class="main"><a href="./" aria-current="page">Accueil</a><a href="download.html">Télécharger</a><a href="getting-started.html">Prise en main</a><a href="github-actions.html">GitHub Actions</a><a href="pkcs11.html">PKCS#11</a><a href="security.html">Sécurité</a><a href="faq.html">FAQ</a></nav>
+<a class="lang" href="../" hreflang="en" lang="en"><img src="../img/gb.svg" alt="" width="21" height="14">English version</a>
+</div></header>
+<main><div class="wrap">
+<section class="hero">
+<p class="eyebrow">Certum SimplySign · Authenticode</p>
+<h1>Signez vos exécutables Windows avec Certum SimplySign, depuis Linux, macOS ou Windows</h1>
+<p class="lead">ssign est un outil en ligne de commande libre et gratuit qui signe en Authenticode les binaires Windows
+avec votre certificat cloud Certum SimplySign. Il parle lui-même au cloud SimplySign en HTTPS : sans SimplySign
+Desktop, sans interface graphique, sans conteneur, sans pile PKCS#11. Une seule commande, sur votre machine ou en
+CI.</p>
+<pre><code>ssign -e vous@example.com -T 123456 app.exe</code></pre>
+<p class="actions"><a class="btn big" href="download.html">Télécharger ssign</a>
+<a class="btn big ghost" href="getting-started.html">Prise en main</a></p>
+</section>
+
+<h2>Le problème</h2>
+<p>Avec un certificat SimplySign, la clé privée reste dans le HSM (module matériel de sécurité) du cloud Certum : la
+signature se fait à distance. L'application cliente de Certum, SimplySign Desktop, détient la session de connexion et
+se charge des appels au cloud. Son module PKCS#11 n'a aucun code réseau : il se contente de relayer les demandes vers
+l'application de bureau, qui doit tourner et être connectée. Sur un serveur sans écran ou une machine de CI, le
+contournement consistait à faire tourner SimplySign Desktop dans un conteneur avec un affichage virtuel (Xvnc) et p11-kit, comme le
+fait <a href="https://github.com/hpvb/certum-container">certum-container</a>.</p>
+
+<h2>Ce que fait ssign à la place</h2>
+<p>La signature Authenticode, ce ne sont que des données : hacher le fichier, faire signer par le cloud, emballer la
+signature RSA dans un blob PKCS#7. ssign fait lui-même chaque étape, si bien qu'un portable Linux ou une machine
+<code>ubuntu-latest</code> peut signer un binaire Windows :</p>
+<ol class="flow"><li class="cloud"><span class="where">Cloud Certum</span><strong>Connexion</strong><span>connexion OAuth avec votre e-mail et un code à usage unique à 6 chiffres → jeton d'accès</span></li><li class="cloud"><span class="where">Cloud Certum</span><strong>Récupération de la carte</strong><span>numéro de carte et certificat de signature</span></li><li class="local"><span class="where">Votre machine</span><strong>Hachage</strong><span>empreinte Authenticode SHA-256 de chaque fichier</span></li><li class="cloud"><span class="where">Cloud Certum</span><strong>Demande de signature</strong><span>l'empreinte et le certificat → tâche asynchrone</span></li><li class="cloud"><span class="where">Cloud Certum</span><strong>Attente du résultat</strong><span>→ signature RSA-4096</span></li><li class="local"><span class="where">Votre machine</span><strong>Assemblage</strong><span>PKCS#7 + chaîne de certificats + horodatage RFC 3161, écrits dans le fichier</span></li></ol>
+
+<div class="cards">
+<div class="card"><h3>Prise en main</h3><p>Connexion avec un code à usage unique ou une graine TOTP, signature d'un
+fichier ou d'un lot entier.</p><a class="more" href="getting-started.html">Signer un premier fichier →</a></div>
+<div class="card"><h3>GitHub Actions</h3><p>Un workflow de signature verrouillé : le propriétaire du dépôt approuve
+chaque exécution.</p><a class="more" href="github-actions.html">Signer en CI →</a></div>
+<div class="card"><h3>Module PKCS#11</h3><p>MSI, CAB, catalogues, APPX et scripts PowerShell via
+osslsigncode.</p><a class="more" href="pkcs11.html">Tous les formats →</a></div>
+<div class="card"><h3>Sécurité</h3><p>Ce qui est envoyé et à qui, ce qui est gardé sur le disque, et pourquoi la graine
+TOTP est un secret à longue durée.</p><a class="more" href="security.html">Fonctionnement →</a></div>
+</div>
+
+<h2>Ce qu'il signe</h2>
+<div class="table"><table><thead><tr><th>Fait</th><th>Ne fait pas (encore)</th></tr></thead><tbody>
+<tr><td>Signe en Authenticode les fichiers <strong>PE</strong> : <code>.exe</code>, <code>.dll</code>,
+<code>.sys</code>, <code>.ocx</code>, <code>.cpl</code></td><td>Les <strong>MSI / MSP / MSM</strong> dans la commande
+<code>ssign</code> (en cours ; utilisez le <a href="pkcs11.html">module PKCS#11</a>)</td></tr>
+<tr><td>Intègre la <strong>chaîne de certificats complète</strong> (votre certificat + l'intermédiaire Certum)</td>
+<td>Les <strong>CAB</strong>, catalogues (<code>.cat</code>), scripts PowerShell, APPX/MSIX dans la commande elle-même
+(le module les couvre)</td></tr>
+<tr><td>Ajoute un <strong>horodatage RFC 3161</strong> (<code>time.certum.pl</code>)</td>
+<td>Signer avec autre chose qu'un certificat cloud <strong>Certum SimplySign</strong></td></tr>
+<tr><td>Tourne sous <strong>Linux, macOS, Windows</strong> ; signe un lot de fichiers avec <strong>une seule
+connexion</strong></td><td><strong>Vérifier</strong> les signatures (utilisez <code>signtool</code> ou
+<code>osslsigncode</code>)</td></tr>
+</tbody></table></div>
+<p>Il fonctionne de bout en bout pour les fichiers PE, prouvé en CI : ssign produit une signature Authenticode valide
+avec le vrai certificat cloud Certum, la chaîne complète et un horodatage RFC 3161. La version Windows de ssign est
+elle-même signée avec ssign, depuis une machine Linux.</p>
+
+<h2>Fonctionne sous</h2>
+<ul>
+<li><strong>Linux</strong> (x86_64 et ARM 64 bits), <strong>macOS</strong> (Apple silicon et Intel) et
+<strong>Windows</strong> (64 bits) : <a href="download.html">binaires prêts à l'emploi</a>.</li>
+<li>Ou, si Rust est installé : <code>cargo install ssign</code>.</li>
+</ul>
+
+<h2>Un logiciel libre, développé ouvertement</h2>
+<p>ssign est écrit en Rust et publié sous licence MIT. Le code source, les versions publiées et les tickets sont sur
+<a href="https://github.com/Le-Syl21/ssign">GitHub</a>. Les contributions pour gérer nativement d'autres formats (MSI, CAB, catalogues, APPX/MSIX,
+scripts) sont les bienvenues. Questions, bugs ou tests des bêtas : rejoignez le <a href="https://discord.gg/T37DYHmt2j">Discord</a>.</p>
+</div></main>
+<footer class="site"><div class="wrap">
+<a href="https://github.com/Le-Syl21/ssign">Code source et tickets sur GitHub</a>
+<a href="https://discord.gg/T37DYHmt2j">Discord</a>
+<a href="https://crates.io/crates/ssign">crates.io</a>
+<span>ssign est un logiciel libre sous licence MIT. C'est un client indépendant, sans lien avec Certum / Asseco ni approuvé par eux ; « Certum » et « SimplySign » sont leurs marques.</span>
+</div></footer>
+</body>
+</html>

@@ -6,6 +6,8 @@ Certum SimplySign — en une commande, sur n'importe quel OS.**
 
 🇬🇧 **[English](#english)**  ·  🇫🇷 **[Français](#français)**
 
+🌐 **Website:** [le-syl21.github.io/ssign](https://le-syl21.github.io/ssign/)  ·  **Site web :** [le-syl21.github.io/ssign/fr](https://le-syl21.github.io/ssign/fr/)
+
 Authenticode signing is just data — hashing the file and wrapping the cloud's
 RSA signature into a PKCS#7 blob. `ssign` does it all over plain HTTPS, so you
 can sign a Windows binary from **Linux, macOS or Windows** — no GUI, no
@@ -52,6 +54,8 @@ Questions, bug reports, beta testing, or just want to chat? Join the Discord:
 - [Contributing — native formats wanted](#contributing--native-formats-wanted)
 - [Acknowledgements](#acknowledgements)
 
+> Website: [le-syl21.github.io/ssign](https://le-syl21.github.io/ssign/) — install, CI, PKCS#11, security, FAQ.
+>
 > How the cloud protocol works: [`docs/simplysign-protocol.md`](docs/simplysign-protocol.md).
 
 ### What it does — and doesn't
@@ -239,6 +243,8 @@ the relevant module.
 - [Signer tous les formats — le module PKCS#11](#signer-tous-les-formats--le-module-pkcs11)
 - [Contribuer — formats natifs recherchés](#contribuer--formats-natifs-recherchés)
 - [Remerciements](#remerciements)
+
+> Site web : [le-syl21.github.io/ssign/fr](https://le-syl21.github.io/ssign/fr/) — installation, CI, PKCS#11, sécurité, FAQ.
 
 La signature Authenticode, ce ne sont que des données : hacher le fichier et
 emballer la signature RSA du cloud dans un blob PKCS#7. `ssign` fait tout en

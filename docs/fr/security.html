@@ -1,0 +1,131 @@
+<!doctype html>
+<html lang="fr">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Fonctionnement et sécurité de ssign avec le cloud Certum SimplySign : protocole, secrets, cache</title>
+<meta name="description" content="Ce que ssign envoie au cloud Certum SimplySign et au serveur d&#x27;horodatage, pourquoi la graine TOTP est un secret à longue durée, où le jeton de session est gardé, et comment fonctionne le protocole SimplySign.">
+<link rel="canonical" href="https://le-syl21.github.io/ssign/fr/security.html">
+<link rel="alternate" hreflang="en" href="https://le-syl21.github.io/ssign/security.html">
+<link rel="alternate" hreflang="fr" href="https://le-syl21.github.io/ssign/fr/security.html">
+<link rel="alternate" hreflang="x-default" href="https://le-syl21.github.io/ssign/security.html">
+<meta property="og:type" content="website">
+<meta property="og:site_name" content="ssign">
+<meta property="og:title" content="Fonctionnement et sécurité de ssign avec le cloud Certum SimplySign : protocole, secrets, cache">
+<meta property="og:description" content="Ce que ssign envoie au cloud Certum SimplySign et au serveur d&#x27;horodatage, pourquoi la graine TOTP est un secret à longue durée, où le jeton de session est gardé, et comment fonctionne le protocole SimplySign.">
+<meta property="og:url" content="https://le-syl21.github.io/ssign/fr/security.html">
+<meta property="og:image" content="https://le-syl21.github.io/ssign/img/og.jpg">
+<meta property="og:image:width" content="1200">
+<meta property="og:image:height" content="630">
+<meta property="og:locale" content="fr_FR">
+<meta property="og:locale:alternate" content="en_GB">
+<meta name="twitter:card" content="summary_large_image">
+<meta name="twitter:title" content="Fonctionnement et sécurité de ssign avec le cloud Certum SimplySign : protocole, secrets, cache">
+<meta name="twitter:description" content="Ce que ssign envoie au cloud Certum SimplySign et au serveur d&#x27;horodatage, pourquoi la graine TOTP est un secret à longue durée, où le jeton de session est gardé, et comment fonctionne le protocole SimplySign.">
+<meta name="twitter:image" content="https://le-syl21.github.io/ssign/img/og.jpg">
+<meta name="color-scheme" content="light dark">
+<link rel="icon" type="image/svg+xml" href="../img/favicon.svg">
+<link rel="stylesheet" href="../style.css">
+<script type="application/ld+json">{"@context": "https://schema.org", "@graph": [{"@type": "SoftwareApplication", "@id": "https://le-syl21.github.io/ssign/#app", "name": "ssign", "description": "Outil en ligne de commande qui signe en Authenticode les binaires Windows avec un certificat cloud Certum SimplySign depuis Linux, macOS ou Windows, sans SimplySign Desktop.", "applicationCategory": "DeveloperApplication", "operatingSystem": "Linux, macOS, Windows", "url": "https://le-syl21.github.io/ssign/", "downloadUrl": "https://github.com/Le-Syl21/ssign/releases/latest", "license": "https://opensource.org/licenses/MIT", "codeRepository": "https://github.com/Le-Syl21/ssign", "offers": {"@type": "Offer", "price": "0", "priceCurrency": "EUR"}, "softwareVersion": "0.1.5"}, {"@type": "WebPage", "name": "Fonctionnement et sécurité de ssign avec le cloud Certum SimplySign : protocole, secrets, cache", "description": "Ce que ssign envoie au cloud Certum SimplySign et au serveur d'horodatage, pourquoi la graine TOTP est un secret à longue durée, où le jeton de session est gardé, et comment fonctionne le protocole SimplySign.", "url": "https://le-syl21.github.io/ssign/fr/security.html", "inLanguage": "fr", "about": {"@id": "https://le-syl21.github.io/ssign/#app"}}]}</script>
+</head>
+<body>
+<header class="site"><div class="wrap">
+<a class="brand" href="./"><img src="../img/favicon.svg" alt="" width="24" height="24"><span>s<b>sign</b></span></a>
+<nav class="main"><a href="./">Accueil</a><a href="download.html">Télécharger</a><a href="getting-started.html">Prise en main</a><a href="github-actions.html">GitHub Actions</a><a href="pkcs11.html">PKCS#11</a><a href="security.html" aria-current="page">Sécurité</a><a href="faq.html">FAQ</a></nav>
+<a class="lang" href="../security.html" hreflang="en" lang="en"><img src="../img/gb.svg" alt="" width="21" height="14">English version</a>
+</div></header>
+<main><div class="wrap">
+<h1>Comment ssign fonctionne, et ce qu'il fait de vos secrets</h1>
+<p class="lead">ssign est un client indépendant du service de signature cloud SimplySign. Voici ce qui quitte votre
+machine, ce qui est gardé sur le disque, et ce qu'il faut protéger.</p>
+
+<h2>Ce qui est envoyé, et à qui</h2>
+<div class="table"><table><thead><tr><th>Destination</th><th>Ce que ssign envoie</th></tr></thead><tbody>
+<tr><td><code>cloudsign.webnotarius.pl</code><br><span class="muted">HTTPS</span></td><td><ul>
+<li>Connexion : votre e-mail et le code à 6 chiffres du moment, ainsi que les identifiants de client OAuth de la
+connexion web SimplySign. Ces identifiants sont des constantes de l'application, identiques pour tous les
+utilisateurs de SimplySign Desktop, et non votre secret.</li>
+<li>Ensuite, avec le jeton d'accès (bearer token) obtenu : la demande de votre carte et de votre certificat, puis pour
+chaque signature une empreinte SHA-256 calculée sur votre machine, accompagnée de votre certificat de signature.</li>
+</ul></td></tr>
+<tr><td>Serveur d'horodatage<br><span class="muted"><code>http://time.certum.pl/</code> par défaut, modifiable avec
+<code>--timestamp-url</code></span></td><td>Une requête RFC 3161 contenant l'empreinte SHA-256 de la signature.</td></tr>
+<tr><td>Personne</td><td>Vos fichiers, hachés localement, et votre graine TOTP, dont le code est calculé
+localement.</td></tr>
+</tbody></table></div>
+<p>Les certificats HTTPS sont vérifiés via le magasin de certificats du système d'exploitation.</p>
+
+<h2>La connexion et la clé</h2>
+<ul>
+<li>La connexion est un flux OAuth 2.0 « authorization code » passant par le fournisseur d'identité CAS de Certum. Les
+identifiants sont l'e-mail et le code à 6 chiffres ; aucun mot de passe de compte n'intervient.</li>
+<li>Elle renvoie un jeton d'accès valable environ 30 minutes. La carte SimplySign ne demande pas de PIN
+(<code>pinrequired: false</code>) : le jeton d'accès est le seul contrôle.</li>
+<li>La clé est une RSA-4096, et la clé privée reste dans le HSM du cloud. ssign ne reçoit que des signatures.</li>
+</ul>
+
+<h2 id="seed">La graine TOTP est un secret à longue durée</h2>
+<p><code>-O/--otp</code> (variable d'environnement <code>CERTUM_OTP</code>), c'est votre graine TOTP, le secret base32
+derrière votre appli d'authentification. <strong>Elle est à longue durée</strong> : quiconque l'a, <em>avec</em> votre
+e-mail, peut signer du code en votre nom, indéfiniment, jusqu'à ce que vous régénériez le QR code SimplySign.
+Traitez-la comme une clé privée.</p>
+<ul>
+<li><strong>Jamais</strong> en argument de ligne de commande : elle finit dans l'historique du shell et dans la liste
+des processus. Utilisez la variable d'environnement.</li>
+<li>Préférez <strong><code>-T/--token</code></strong> (un code à usage unique) pour signer à la main en local : la
+graine ne quitte alors jamais votre appli d'authentification.</li>
+<li>En CI, stockez-la comme <strong>secret d'environnement protégé avec relecteurs requis</strong>
+(<a href="github-actions.html#approval">comment faire</a>), pas comme un simple secret de dépôt.</li>
+<li>En cas de fuite, <strong>changez-la</strong> : régénérez le QR code chez Certum.</li>
+</ul>
+<p>L'e-mail du compte n'est pas sensible. Le code à 6 chiffres expire en 30 secondes environ et présente peu de
+risque.</p>
+<p>En mémoire, la commande garde la graine ou le code dans un tampon effacé dès qu'il ne sert plus. Cela ne peut rien
+contre une exposition antérieure au démarrage de ssign : une valeur passée avec <code>--otp</code> est visible dans
+<code>/proc/&lt;pid&gt;/cmdline</code>, et une valeur passée par <code>CERTUM_OTP</code> dans
+<code>/proc/&lt;pid&gt;/environ</code>.</p>
+
+<h2 id="cache">Le cache de session</h2>
+<p>Pour éviter une seconde connexion (Certum n'accepte chaque code qu'une fois), la commande <code>ssign</code> et le
+module PKCS#11 enregistrent la session après la connexion, et la réutilisent aux exécutions suivantes.</p>
+<ul>
+<li><strong>Où</strong> : <code>$XDG_RUNTIME_DIR/ssign/session.json</code> ; si <code>XDG_RUNTIME_DIR</code> n'est pas
+défini, <code>$HOME/.cache/ssign/session.json</code> ; sinon <code>ssign/session.json</code> dans le dossier temporaire
+du système.</li>
+<li><strong>Quoi</strong> : l'e-mail du compte, le jeton d'accès, une heure d'expiration, le numéro de carte et le
+certificat de signature. Ni la graine ni le code ne sont écrits.</li>
+<li><strong>Combien de temps</strong> : ssign fait confiance à un jeton enregistré pendant 20 minutes, en deçà de sa
+durée de vie d'environ 30 minutes, et se reconnecte quand il reste moins de 2 minutes.</li>
+<li><strong>Permissions</strong> : sur les systèmes Unix, le dossier est créé en mode <code>0700</code> et le fichier en
+<code>0600</code>, lisibles par votre seul utilisateur.</li>
+<li>Un cache enregistré pour une autre adresse e-mail, expiré ou illisible est ignoré, et ssign se reconnecte.</li>
+</ul>
+<div class="note">Quiconque peut lire <code>session.json</code> peut signer en votre nom jusqu'à l'expiration du jeton.
+Gardez-le en tête sur une machine partagée.</div>
+
+<h2>Ce que contient la signature</h2>
+<p>ssign construit un SignedData PKCS#7 Authenticode standard : l'empreinte Authenticode SHA-256 du fichier, l'heure de
+signature, la description et l'URL facultatives (<code>-n</code>, <code>-u</code>), la signature RSA du cloud, votre
+certificat et l'intermédiaire Certum « Code Signing 2021 CA », et le jeton d'horodatage RFC 3161. Il est intégré à la
+table des certificats du fichier PE, dont la somme de contrôle est mise à jour. L'empreinte envoyée au cloud est le
+SHA-256 des attributs signés qui portent l'empreinte du fichier.</p>
+
+<h2>Le protocole SimplySign</h2>
+<p>ssign parle directement le protocole du cloud :</p>
+<ol class="flow"><li class="cloud"><span class="where">Cloud Certum</span><strong>Connexion</strong><span>connexion OAuth avec votre e-mail et un code à usage unique à 6 chiffres → jeton d'accès</span></li><li class="cloud"><span class="where">Cloud Certum</span><strong>Récupération de la carte</strong><span>numéro de carte et certificat de signature</span></li><li class="local"><span class="where">Votre machine</span><strong>Hachage</strong><span>empreinte Authenticode SHA-256 de chaque fichier</span></li><li class="cloud"><span class="where">Cloud Certum</span><strong>Demande de signature</strong><span>l'empreinte et le certificat → tâche asynchrone</span></li><li class="cloud"><span class="where">Cloud Certum</span><strong>Attente du résultat</strong><span>→ signature RSA-4096</span></li><li class="local"><span class="where">Votre machine</span><strong>Assemblage</strong><span>PKCS#7 + chaîne de certificats + horodatage RFC 3161, écrits dans le fichier</span></li></ol>
+<p>Le protocole a été reconstitué par rétro-ingénierie à partir de l'installation sous licence de SimplySign Desktop
+2.9.14 de l'auteur, à des fins d'interopérabilité, avec un proxy qui enregistrait la structure des requêtes en masquant
+chaque valeur : aucun jeton, code, PIN ni signature n'a été écrit sur le disque. Tout le flux est du HTTPS simple, sans
+étape d'activation cryptographique : le contrôle de session repose sur le jeton d'accès OAuth. Le module PKCS#11 de
+SimplySign Desktop n'est qu'une fine couche qui relaie vers l'application de bureau en cours d'exécution, et c'est
+pourquoi il ne peut pas signer seul. La référence complète, avec les points d'accès et les fausses pistes :
+<a href="https://github.com/Le-Syl21/ssign/blob/main/docs/simplysign-protocol.md">docs/simplysign-protocol.md</a> (en anglais).</p>
+</div></main>
+<footer class="site"><div class="wrap">
+<a href="https://github.com/Le-Syl21/ssign">Code source et tickets sur GitHub</a>
+<a href="https://discord.gg/T37DYHmt2j">Discord</a>
+<a href="https://crates.io/crates/ssign">crates.io</a>
+<span>ssign est un logiciel libre sous licence MIT. C'est un client indépendant, sans lien avec Certum / Asseco ni approuvé par eux ; « Certum » et « SimplySign » sont leurs marques.</span>
+</div></footer>
+</body>
+</html>
