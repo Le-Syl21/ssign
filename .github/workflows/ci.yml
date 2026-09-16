@@ -115,6 +115,19 @@ jobs:
         if: matrix.target != 'x86_64-apple-darwin' && !matrix.cross
         run: cargo run --release --target ${{ matrix.target }} -- --help
 
+      # Post-build check of the module as a PKCS#11 host sees it, no credentials
+      # needed: it loads, exposes the ssign token and the SHA-256 RSA mechanisms.
+      - name: Smoke test the PKCS#11 module
+        if: matrix.lint
+        run: |
+          sudo apt-get update -qq && sudo apt-get install -y opensc
+          module=target/${{ matrix.target }}/release/libssign_pkcs11.so
+          pkcs11-tool --module "$module" -L | tee slots.txt
+          grep -q "token label *: ssign" slots.txt
+          pkcs11-tool --module "$module" --list-mechanisms | tee mechanisms.txt
+          grep -q "^ *SHA256-RSA-PKCS, sign" mechanisms.txt
+          grep -q "^ *RSA-PKCS, sign" mechanisms.txt
+
       # --- Package (binaires non signés ; la signature Apple est faite plus bas,
       # dans un job dédié derrière l'environnement `signing`). ---
       - name: Package (Unix)
@@ -149,13 +162,54 @@ jobs:
           name: ssign-pkcs11-${{ matrix.label }}
           path: ssign-pkcs11-${{ matrix.label }}.*
 
+  # Live checks against the Certum cloud, after the build and before anything is
+  # signed: PKCS#11 mechanisms, jsign (SunPKCS11), osslsigncode on every format
+  # and the CLI, all on the Linux binaries of this run. Both signing jobs, and so
+  # the release, wait for it. Behind `signing` because it reads the Certum secrets.
+  # Also runs on workflow_dispatch, to check a branch without tagging.
+  pre-sign-checks:
+    needs: build
+    if: startsWith(github.ref, 'refs/tags/v') || github.event_name == 'workflow_dispatch'
+    runs-on: ubuntu-24.04
+    environment: signing
+    env:
+      JSIGN_VERSION: "7.5"
+      JSIGN_SHA256: 602a51c3545a6dc4fb99bd2ea7152b26d1345916d0c93ddfbd5936cb735af91c
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: Download the Linux CLI and module
+        uses: actions/download-artifact@v8
+        with:
+          pattern: ssign-*linux-x86_64
+          path: dl
+
+      - name: Install the test tools
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y opensc osslsigncode libengine-pkcs11-openssl
+          curl -fsSL -o "$RUNNER_TEMP/jsign.jar" \
+            "https://github.com/ebourg/jsign/releases/download/$JSIGN_VERSION/jsign-$JSIGN_VERSION.jar"
+          echo "$JSIGN_SHA256  $RUNNER_TEMP/jsign.jar" | sha256sum -c -
+          java -version
+
+      - name: Run the pre-sign checks
+        env:
+          CERTUM_EMAIL: ${{ secrets.CERTUM_EMAIL }}
+          CERTUM_OTP: ${{ secrets.CERTUM_OTP }}
+        run: |
+          mkdir -p bin
+          tar xzf dl/ssign-linux-x86_64/ssign-linux-x86_64.tar.gz -C bin
+          tar xzf dl/ssign-pkcs11-linux-x86_64/ssign-pkcs11-linux-x86_64.tar.gz -C bin
+          JSIGN_JAR="$RUNNER_TEMP/jsign.jar" tests/pre-sign.sh bin/ssign bin/libssign_pkcs11.so
+
   # Signature + notarisation Apple. Derrière `signing` au même titre que Windows :
   # une signature Developer ID engage l'identité (et donc la réputation) du
   # propriétaire, elle ne doit jamais partir sans approbation explicite. Les
   # secrets Apple vivent dans cet environnement — un job qui ne le déclare pas
   # les lirait vides.
   sign-apple:
-    needs: build
+    needs: [build, pre-sign-checks]
     if: startsWith(github.ref, 'refs/tags/v')
     runs-on: macos-latest
     environment: signing
@@ -297,7 +351,7 @@ jobs:
   # the owner's approval before it can read the Certum secrets and sign, and the
   # release below waits for it — so a tag becomes: build → approve → signed release.
   sign-windows:
-    needs: build
+    needs: [build, pre-sign-checks]
     if: startsWith(github.ref, 'refs/tags/v')
     runs-on: ubuntu-latest
     environment: signing
