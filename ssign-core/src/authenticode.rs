@@ -34,6 +34,7 @@ const SPC_ATTR_CONST: &[u8] = &[
     0x00, 0x3e, 0x00, 0x3e, 0x00, 0x3e,
 ];
 
+/// SHA-256 of `data`.
 pub fn sha256(data: &[u8]) -> [u8; 32] {
     let mut h = Sha256::new();
     h.update(data);

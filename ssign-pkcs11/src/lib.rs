@@ -227,21 +227,7 @@ impl PrivateKey for CertumKey {
     }
 
     fn sign(&self, algorithm: &SignatureAlgorithm, data: &[u8]) -> Result<Vec<u8>> {
-        if std::env::var("SSIGN_DEBUG").is_ok() {
-            eprintln!("ssign-pkcs11: sign alg={algorithm:?} input_len={}", data.len());
-        }
-        let digest = match algorithm {
-            // signtool sends a bare 32-byte digest; SunPKCS11 (jsign) sends a
-            // DigestInfo or the full data under this same algorithm.
-            SignatureAlgorithm::RsaPkcs1v15Sha256 => sha256_digest(data),
-            // osslsigncode (CKM_RSA_PKCS): a DER SHA-256 DigestInfo.
-            SignatureAlgorithm::RsaPkcs1v15Raw => sha256_digest(data),
-            other => {
-                return Err(boxed(format!(
-                    "unsupported algorithm {other:?}; the Certum cloud cert signs SHA-256 RSA PKCS#1 v1.5 only"
-                )))
-            }
-        };
+        let digest = digest_to_sign(algorithm, data)?;
         self.session
             .sign_sha256(&digest)
             .map_err(|e| boxed(format!("cloud signature failed: {e:#}")))
@@ -254,27 +240,39 @@ impl PrivateKey for CertumKey {
     }
 }
 
-/// Resolve a 32-byte SHA-256 digest from whatever a PKCS#11 caller hands us:
-///   * a bare 32-byte digest (signtool),
-///   * a 51-byte DER SHA-256 DigestInfo (osslsigncode, and SunPKCS11/jsign),
-///   * or the full message, hashed here (some SunPKCS11 combined-mechanism paths).
-///
-/// The three shapes are disjoint by length/prefix, so this never misclassifies.
-fn sha256_digest(data: &[u8]) -> [u8; 32] {
-    // Bare 32-byte digest.
-    if let Ok(digest) = <[u8; 32]>::try_from(data) {
-        return digest;
+/// The 32-byte SHA-256 digest the cloud signs, from what the PKCS#11 caller
+/// passed for `algorithm`.
+fn digest_to_sign(algorithm: &SignatureAlgorithm, data: &[u8]) -> Result<[u8; 32]> {
+    match algorithm {
+        // CKM_SHA256_RSA_PKCS (jsign / Java SunPKCS11, pkcs11-tool): the caller
+        // passes the message itself, possibly over C_SignUpdate/C_SignFinal, and
+        // the token hashes it. Whatever its length, it is never a digest.
+        SignatureAlgorithm::RsaPkcs1v15Sha256 => Ok(ssign_core::authenticode::sha256(data)),
+        // CKM_RSA_PKCS (osslsigncode): a DER SHA-256 DigestInfo.
+        SignatureAlgorithm::RsaPkcs1v15Raw => sha256_from_digestinfo(data),
+        other => Err(boxed(format!(
+            "unsupported algorithm {other:?}; the Certum cloud cert signs SHA-256 RSA PKCS#1 v1.5 only"
+        ))),
     }
-    // DER SHA-256 DigestInfo: known 19-byte prefix + 32-byte digest.
+}
+
+/// Peel a SHA-256 `DigestInfo` (or accept a bare digest) down to 32 bytes.
+fn sha256_from_digestinfo(data: &[u8]) -> Result<[u8; 32]> {
     if data.len() == SHA256_DIGESTINFO_PREFIX.len() + 32
         && data[..SHA256_DIGESTINFO_PREFIX.len()] == SHA256_DIGESTINFO_PREFIX
     {
         let mut digest = [0u8; 32];
         digest.copy_from_slice(&data[SHA256_DIGESTINFO_PREFIX.len()..]);
-        return digest;
+        Ok(digest)
+    } else if let Ok(digest) = <[u8; 32]>::try_from(data) {
+        // Some callers hand a bare digest even with CKM_RSA_PKCS.
+        Ok(digest)
+    } else {
+        Err(boxed(format!(
+            "expected a SHA-256 DigestInfo (51 bytes) or a bare 32-byte digest; got {} bytes (only SHA-256 is supported)",
+            data.len()
+        )))
     }
-    // Otherwise treat the input as the full message and hash it here.
-    ssign_core::authenticode::sha256(data)
 }
 
 /// Resolve the current 6-digit code from the environment — only needed when
@@ -322,4 +320,75 @@ pub unsafe extern "C" fn C_GetFunctionList(pp_function_list: CK_FUNCTION_LIST_PT
     });
     *pp_function_list = std::ptr::addr_of_mut!(native_pkcs11::FUNC_LIST);
     CKR_OK
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn digestinfo(digest: &[u8; 32]) -> Vec<u8> {
+        [&SHA256_DIGESTINFO_PREFIX[..], digest].concat()
+    }
+
+    #[test]
+    fn sha256_rsa_pkcs_hashes_the_message() {
+        let message = b"signed attributes of an Authenticode signature";
+        let digest = digest_to_sign(&SignatureAlgorithm::RsaPkcs1v15Sha256, message).unwrap();
+        assert_eq!(digest, ssign_core::authenticode::sha256(message));
+    }
+
+    /// A message that happens to look like a digest or a DigestInfo is still a
+    /// message under CKM_SHA256_RSA_PKCS, and must be hashed.
+    #[test]
+    fn sha256_rsa_pkcs_never_guesses_from_the_length() {
+        let message32 = [0x42u8; 32];
+        let message51 = digestinfo(&[0x42u8; 32]);
+        for message in [&message32[..], &message51[..]] {
+            let digest = digest_to_sign(&SignatureAlgorithm::RsaPkcs1v15Sha256, message).unwrap();
+            assert_eq!(digest, ssign_core::authenticode::sha256(message));
+        }
+    }
+
+    /// Both mechanisms must end up signing the same digest for the same message,
+    /// or osslsigncode and jsign would produce different signatures.
+    #[test]
+    fn both_mechanisms_sign_the_same_digest() {
+        let message = b"same message, two mechanisms";
+        let via_sha256 = digest_to_sign(&SignatureAlgorithm::RsaPkcs1v15Sha256, message).unwrap();
+        let hashed = ssign_core::authenticode::sha256(message);
+        let via_raw =
+            digest_to_sign(&SignatureAlgorithm::RsaPkcs1v15Raw, &digestinfo(&hashed)).unwrap();
+        assert_eq!(via_sha256, via_raw);
+    }
+
+    #[test]
+    fn rsa_pkcs_accepts_a_bare_digest() {
+        let digest = [7u8; 32];
+        assert_eq!(
+            digest_to_sign(&SignatureAlgorithm::RsaPkcs1v15Raw, &digest).unwrap(),
+            digest
+        );
+    }
+
+    /// A SHA-384 DigestInfo must be refused, not re-hashed into a signature
+    /// that no verifier would accept.
+    #[test]
+    fn rsa_pkcs_rejects_other_digests() {
+        let sha384_digestinfo = [
+            &[
+                0x30, 0x41, 0x30, 0x0d, 0x06, 0x09, 0x60, 0x86, 0x48, 0x01, 0x65, 0x03, 0x04, 0x02,
+                0x02, 0x05, 0x00, 0x04, 0x30,
+            ][..],
+            &[0u8; 48],
+        ]
+        .concat();
+        assert!(digest_to_sign(&SignatureAlgorithm::RsaPkcs1v15Raw, &sha384_digestinfo).is_err());
+        assert!(digest_to_sign(&SignatureAlgorithm::RsaPkcs1v15Raw, b"not a digest").is_err());
+    }
+
+    #[test]
+    fn other_algorithms_are_refused() {
+        assert!(digest_to_sign(&SignatureAlgorithm::RsaPkcs1v15Sha384, b"x").is_err());
+        assert!(digest_to_sign(&SignatureAlgorithm::Ecdsa, &[0u8; 32]).is_err());
+    }
 }
