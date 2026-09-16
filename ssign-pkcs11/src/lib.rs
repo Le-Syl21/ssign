@@ -227,13 +227,15 @@ impl PrivateKey for CertumKey {
     }
 
     fn sign(&self, algorithm: &SignatureAlgorithm, data: &[u8]) -> Result<Vec<u8>> {
+        if std::env::var("SSIGN_DEBUG").is_ok() {
+            eprintln!("ssign-pkcs11: sign alg={algorithm:?} input_len={}", data.len());
+        }
         let digest = match algorithm {
-            // signtool-style: the bare 32-byte digest.
-            SignatureAlgorithm::RsaPkcs1v15Sha256 => data.try_into().map_err(|_| {
-                boxed(format!("expected a 32-byte SHA-256 digest, got {}", data.len()))
-            })?,
-            // osslsigncode-style (CKM_RSA_PKCS): a DER SHA-256 DigestInfo.
-            SignatureAlgorithm::RsaPkcs1v15Raw => sha256_from_digestinfo(data)?,
+            // signtool sends a bare 32-byte digest; SunPKCS11 (jsign) sends a
+            // DigestInfo or the full data under this same algorithm.
+            SignatureAlgorithm::RsaPkcs1v15Sha256 => sha256_digest(data),
+            // osslsigncode (CKM_RSA_PKCS): a DER SHA-256 DigestInfo.
+            SignatureAlgorithm::RsaPkcs1v15Raw => sha256_digest(data),
             other => {
                 return Err(boxed(format!(
                     "unsupported algorithm {other:?}; the Certum cloud cert signs SHA-256 RSA PKCS#1 v1.5 only"
@@ -252,23 +254,27 @@ impl PrivateKey for CertumKey {
     }
 }
 
-/// Peel a SHA-256 `DigestInfo` (or accept a bare digest) down to 32 bytes.
-fn sha256_from_digestinfo(data: &[u8]) -> Result<[u8; 32]> {
+/// Resolve a 32-byte SHA-256 digest from whatever a PKCS#11 caller hands us:
+///   * a bare 32-byte digest (signtool),
+///   * a 51-byte DER SHA-256 DigestInfo (osslsigncode, and SunPKCS11/jsign),
+///   * or the full message, hashed here (some SunPKCS11 combined-mechanism paths).
+///
+/// The three shapes are disjoint by length/prefix, so this never misclassifies.
+fn sha256_digest(data: &[u8]) -> [u8; 32] {
+    // Bare 32-byte digest.
+    if let Ok(digest) = <[u8; 32]>::try_from(data) {
+        return digest;
+    }
+    // DER SHA-256 DigestInfo: known 19-byte prefix + 32-byte digest.
     if data.len() == SHA256_DIGESTINFO_PREFIX.len() + 32
         && data[..SHA256_DIGESTINFO_PREFIX.len()] == SHA256_DIGESTINFO_PREFIX
     {
         let mut digest = [0u8; 32];
         digest.copy_from_slice(&data[SHA256_DIGESTINFO_PREFIX.len()..]);
-        Ok(digest)
-    } else if let Ok(digest) = <[u8; 32]>::try_from(data) {
-        // Some callers hand a bare digest even with CKM_RSA_PKCS.
-        Ok(digest)
-    } else {
-        Err(boxed(format!(
-            "expected a SHA-256 DigestInfo (51 bytes) or a bare 32-byte digest; got {} bytes (only SHA-256 is supported)",
-            data.len()
-        )))
+        return digest;
     }
+    // Otherwise treat the input as the full message and hash it here.
+    ssign_core::authenticode::sha256(data)
 }
 
 /// Resolve the current 6-digit code from the environment — only needed when
