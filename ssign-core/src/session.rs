@@ -132,6 +132,19 @@ impl CloudSession {
 
     /// [`load_cached`](Self::load_cached) against an explicit path.
     fn load_cached_from(path: &Path, email: &str) -> Option<Self> {
+        // A cache that is not ours, or that others can read, was not written
+        // by write_private: ignore it rather than sign with whatever it holds.
+        #[cfg(unix)]
+        {
+            use std::os::unix::fs::{MetadataExt, PermissionsExt};
+            let meta = fs::symlink_metadata(path).ok()?;
+            if !meta.is_file()
+                || meta.uid() != current_uid()
+                || meta.permissions().mode() & 0o077 != 0
+            {
+                return None;
+            }
+        }
         let raw = fs::read(path).ok()?;
         let v: serde_json::Value = serde_json::from_slice(&raw).ok()?;
         if v.get("email")?.as_str()? != email {
@@ -179,35 +192,81 @@ fn now() -> u64 {
         .unwrap_or(0)
 }
 
-/// `$XDG_RUNTIME_DIR/ssign/session.json`, falling back to `$HOME/.cache` then
-/// the system temp dir. The token here can sign for ~30 min, so the file is
-/// written user-private (see [`write_private`]).
+/// `$XDG_RUNTIME_DIR/ssign/session.json`, falling back to `$HOME/.cache`. The
+/// token here can sign for ~30 min, so the file is written user-private (see
+/// [`write_private`]).
+///
+/// On Windows the system temp dir is a last resort: it is per-user and
+/// ACL-protected (`%LOCALAPPDATA%\Temp`). A Unix temp dir is shared by every
+/// account on the machine, which makes it no place for a token that signs
+/// code: without a private directory there is simply no cache, and the next
+/// signature asks for an OTP.
 fn cache_path() -> Option<PathBuf> {
     let base = std::env::var_os("XDG_RUNTIME_DIR")
         .map(PathBuf::from)
-        .or_else(|| std::env::var_os("HOME").map(|h| PathBuf::from(h).join(".cache")))
-        .unwrap_or_else(std::env::temp_dir);
-    Some(base.join("ssign").join("session.json"))
+        .or_else(|| std::env::var_os("HOME").map(|h| PathBuf::from(h).join(".cache")));
+    #[cfg(windows)]
+    let base = base.or_else(|| Some(std::env::temp_dir()));
+    Some(base?.join("ssign").join("session.json"))
 }
 
 /// Write `data` to `path` with owner-only permissions, creating the parent
 /// directory (also owner-only on Unix).
+///
+/// The token goes into a temporary file created owner-only from the start, and
+/// is then renamed over `path`. Writing first and restricting afterwards would
+/// leave it readable under the default umask for a moment, and a symlink
+/// planted at `path` would be followed; `rename` replaces the link instead.
+///
+/// On Unix the directory must be ours and closed to everyone else. One that
+/// already exists and belongs to another account (a shared parent, a
+/// pre-created `ssign/`) could hand the token to that account, so nothing is
+/// written there at all.
 fn write_private(path: &Path, data: &[u8]) -> std::io::Result<()> {
-    if let Some(dir) = path.parent() {
-        fs::create_dir_all(dir)?;
-        #[cfg(unix)]
-        {
-            use std::os::unix::fs::PermissionsExt;
-            let _ = fs::set_permissions(dir, fs::Permissions::from_mode(0o700));
-        }
-    }
-    fs::write(path, data)?;
+    use std::io::Write;
+
+    let dir = path
+        .parent()
+        .ok_or_else(|| std::io::Error::other("cache path has no parent directory"))?;
+    fs::create_dir_all(dir)?;
     #[cfg(unix)]
     {
-        use std::os::unix::fs::PermissionsExt;
-        fs::set_permissions(path, fs::Permissions::from_mode(0o600))?;
+        use std::os::unix::fs::{MetadataExt, PermissionsExt};
+        let meta = fs::symlink_metadata(dir)?;
+        if !meta.is_dir() || meta.uid() != current_uid() {
+            return Err(std::io::Error::other(
+                "cache directory does not belong to this user",
+            ));
+        }
+        fs::set_permissions(dir, fs::Permissions::from_mode(0o700))?;
     }
-    Ok(())
+
+    let tmp = dir.join(format!(".session.{}.tmp", std::process::id()));
+    let _ = fs::remove_file(&tmp);
+    let mut options = fs::OpenOptions::new();
+    options.write(true).create_new(true);
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::OpenOptionsExt;
+        options.mode(0o600);
+    }
+    let written = (|| {
+        let mut file = options.open(&tmp)?;
+        file.write_all(data)?;
+        file.sync_all()?;
+        fs::rename(&tmp, path)
+    })();
+    if written.is_err() {
+        let _ = fs::remove_file(&tmp);
+    }
+    written
+}
+
+/// The effective user id, to tell our own files from anyone else's.
+#[cfg(unix)]
+fn current_uid() -> u32 {
+    // SAFETY: geteuid has no preconditions and cannot fail.
+    unsafe { libc::geteuid() }
 }
 
 #[cfg(test)]
@@ -263,6 +322,35 @@ mod tests {
             let mode = fs::metadata(&path).unwrap().permissions().mode();
             assert_eq!(mode & 0o777, 0o600, "token file must not be world-readable");
         }
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn a_symlink_at_the_cache_path_is_replaced_not_followed() {
+        let path = temp_cache("symlink");
+        fs::create_dir_all(path.parent().unwrap()).unwrap();
+        let victim = path.parent().unwrap().join("victim");
+        fs::write(&victim, "untouched").unwrap();
+        std::os::unix::fs::symlink(&victim, &path).unwrap();
+
+        fake_session().save_to(&path, "user@example.com");
+
+        assert_eq!(fs::read_to_string(&victim).unwrap(), "untouched");
+        let meta = fs::symlink_metadata(&path).unwrap();
+        assert!(
+            meta.file_type().is_file(),
+            "the link itself must have been replaced"
+        );
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn a_cache_readable_by_others_is_ignored() {
+        use std::os::unix::fs::PermissionsExt;
+        let path = temp_cache("readable");
+        fake_session().save_to(&path, "user@example.com");
+        fs::set_permissions(&path, fs::Permissions::from_mode(0o644)).unwrap();
+        assert!(CloudSession::load_cached_from(&path, "user@example.com").is_none());
     }
 
     #[test]

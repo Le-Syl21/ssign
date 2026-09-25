@@ -45,3 +45,7 @@ der = { version = "0.8", features = ["pem"] }
 
 [dev-dependencies]
 rsa = { version = "0.9", features = ["sha2", "pem"] }
+
+[target.'cfg(unix)'.dependencies]
+# geteuid, to refuse a session cache directory or file owned by another account.
+libc = "0.2"
