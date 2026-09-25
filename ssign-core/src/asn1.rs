@@ -103,12 +103,15 @@ pub fn bool_true() -> Vec<u8> {
 /// slices of each element within `tlv`'s content, or an error on malformed DER.
 pub fn children(tlv: &[u8]) -> Result<Vec<&[u8]>, &'static str> {
     let (hdr, len) = read_len(tlv, 1)?;
-    let content = tlv.get(hdr..hdr + len).ok_or("truncated TLV")?;
+    // checked_add: a forged length near usize::MAX would otherwise wrap around
+    // in a release build and slice somewhere plausible instead of failing.
+    let end = hdr.checked_add(len).ok_or("TLV length overflows")?;
+    let content = tlv.get(hdr..end).ok_or("truncated TLV")?;
     let mut out = Vec::new();
     let mut i = 0;
     while i < content.len() {
         let (h, l) = read_len(content, i + 1)?;
-        let end = h + l;
+        let end = h.checked_add(l).ok_or("element length overflows")?;
         out.push(content.get(i..end).ok_or("truncated element")?);
         i = end;
     }
@@ -123,6 +126,12 @@ fn read_len(b: &[u8], at: usize) -> Result<(usize, usize), &'static str> {
         Ok((at + 1, first as usize))
     } else {
         let n = (first & 0x7f) as usize;
+        // DER has no indefinite length (0x80), and a length wider than a usize
+        // cannot describe bytes that are actually there: shifting it in would
+        // silently drop its high bytes.
+        if n == 0 || n > core::mem::size_of::<usize>() {
+            return Err("unsupported length encoding");
+        }
         let bytes = b.get(at + 1..at + 1 + n).ok_or("truncated long length")?;
         let mut len = 0usize;
         for &byte in bytes {
@@ -134,6 +143,27 @@ fn read_len(b: &[u8], at: usize) -> Result<(usize, usize), &'static str> {
 
 #[cfg(test)]
 mod tests {
+    /// Found by fuzzing: lengths near usize::MAX overflowed `hdr + len`,
+    /// which panics in a debug build and wraps around in a release one.
+    #[test]
+    fn rejects_lengths_that_overflow() {
+        let huge = [0x30, 0x88, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff];
+        assert!(children(&huge).is_err());
+        let mut inner = vec![0x30, 0x0a, 0x04, 0x88];
+        inner.extend_from_slice(&[0xff; 8]);
+        assert!(children(&inner).is_err());
+    }
+
+    /// A 9-byte length does not fit a usize, and 0x80 is BER's indefinite
+    /// length, which DER forbids.
+    #[test]
+    fn rejects_unsupported_length_encodings() {
+        let mut nine = vec![0x30, 0x89];
+        nine.extend_from_slice(&[0; 9]);
+        assert!(children(&nine).is_err());
+        assert!(children(&[0x30, 0x80, 0x00, 0x00]).is_err());
+    }
+
     use super::*;
 
     #[test]

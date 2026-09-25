@@ -93,6 +93,12 @@ pub fn pe_hash(pe: &[u8]) -> Result<[u8; 32]> {
         if l.cert_table_off > pe.len() || cert_end > pe.len() {
             bail!("certificate table lies outside the PE file");
         }
+        // The hash covers the headers up to the security directory entry and
+        // then stops at the table: a table said to start inside the headers
+        // would make that range run backwards.
+        if l.cert_table_off < l.sec_dir_entry_off + 8 {
+            bail!("certificate table overlaps the PE headers");
+        }
         (l.cert_table_off, cert_end)
     };
     let mut h = Sha256::new();
@@ -430,6 +436,20 @@ mod tests {
         pe[0x80..0x84].copy_from_slice(b"PE\0\0");
         pe[0x98..0x9a].copy_from_slice(&[0x0b, 0x01]);
         pe[0x118..0x11c].copy_from_slice(&(0xffff_fff0u32).to_le_bytes());
+        pe[0x11c..0x120].copy_from_slice(&(0x20u32).to_le_bytes());
+        assert!(pe_hash(&pe).is_err());
+    }
+
+    /// Found by fuzzing: a table offset inside the headers made pe_hash slice
+    /// `pe[0x120..0]` and panic.
+    #[test]
+    fn rejects_a_certificate_table_inside_the_headers() {
+        let mut pe = vec![0u8; 0x200];
+        pe[..2].copy_from_slice(b"MZ");
+        pe[0x3c..0x40].copy_from_slice(&(0x80u32).to_le_bytes());
+        pe[0x80..0x84].copy_from_slice(b"PE\0\0");
+        pe[0x98..0x9a].copy_from_slice(&[0x0b, 0x01]);
+        pe[0x118..0x11c].copy_from_slice(&(0u32).to_le_bytes());
         pe[0x11c..0x120].copy_from_slice(&(0x20u32).to_le_bytes());
         assert!(pe_hash(&pe).is_err());
     }
