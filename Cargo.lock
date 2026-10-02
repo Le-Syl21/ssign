@@ -1865,7 +1865,7 @@ dependencies = [
 
 [[package]]
 name = "ssign"
-version = "0.1.6"
+version = "0.1.7"
 dependencies = [
  "anyhow",
  "clap",
@@ -1875,7 +1875,7 @@ dependencies = [
 
 [[package]]
 name = "ssign-core"
-version = "0.1.5"
+version = "0.1.6"
 dependencies = [
  "anyhow",
  "base32",
@@ -1896,7 +1896,7 @@ dependencies = [
 
 [[package]]
 name = "ssign-pkcs11"
-version = "0.1.5"
+version = "0.1.6"
 dependencies = [
  "native-pkcs11",
  "native-pkcs11-traits",
