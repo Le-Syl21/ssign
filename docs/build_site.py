@@ -1081,15 +1081,18 @@ an exposure that happens before ssign starts: a value passed as <code>--otp</cod
 save the session after logging in, and reuse it on the next runs.</p>
 <ul>
 <li><strong>Where</strong>: <code>$XDG_RUNTIME_DIR/ssign/session.json</code>; if <code>XDG_RUNTIME_DIR</code> is not
-set, <code>$HOME/.cache/ssign/session.json</code>; otherwise <code>ssign/session.json</code> in the system temporary
-folder.</li>
+set, <code>$HOME/.cache/ssign/session.json</code>. On Windows, your own temporary folder is the last resort. Linux and
+macOS have no such fallback: their system temporary folder is shared by every account, so without either directory
+nothing is cached and each run logs in again.</li>
 <li><strong>What</strong>: the account e-mail, the bearer token, an expiry time, the card serial and the signing
 certificate. Neither the seed nor the code is written.</li>
 <li><strong>How long</strong>: ssign trusts a saved token for 20 minutes, inside the token's own lifetime of about 30
 minutes, and logs in again when less than 2 minutes remain.</li>
 <li><strong>Permissions</strong>: on Unix systems the folder is created with mode <code>0700</code> and the file with
-<code>0600</code>, readable by your user only.</li>
-<li>A cache saved for another e-mail address, expired or unreadable is ignored, and ssign logs in again.</li>
+<code>0600</code>, readable by your user only. The file has these permissions from its first byte: it is written
+under a temporary name, then renamed into place. If the folder belongs to another account, nothing is written.</li>
+<li>A cache saved for another e-mail address, expired or unreadable is ignored, and so, on Unix systems, is one that
+belongs to another account or that others can read; ssign then logs in again.</li>
 </ul>
 <div class="note">Whoever can read <code>session.json</code> can sign as you until the token expires. On a shared
 machine, keep that in mind.</div>
@@ -1170,15 +1173,18 @@ contre une exposition antérieure au démarrage de ssign : une valeur passée av
 module PKCS#11 enregistrent la session après la connexion, et la réutilisent aux exécutions suivantes.</p>
 <ul>
 <li><strong>Où</strong> : <code>$XDG_RUNTIME_DIR/ssign/session.json</code> ; si <code>XDG_RUNTIME_DIR</code> n'est pas
-défini, <code>$HOME/.cache/ssign/session.json</code> ; sinon <code>ssign/session.json</code> dans le dossier temporaire
-du système.</li>
+défini, <code>$HOME/.cache/ssign/session.json</code>. Sous Windows, votre propre dossier temporaire sert de dernier
+recours. Linux et macOS n'ont pas cette solution de repli : leur dossier temporaire système est partagé par tous les
+comptes, donc sans l'un de ces deux dossiers rien n'est mis en cache, et chaque exécution se reconnecte.</li>
 <li><strong>Quoi</strong> : l'e-mail du compte, le jeton d'accès, une heure d'expiration, le numéro de carte et le
 certificat de signature. Ni la graine ni le code ne sont écrits.</li>
 <li><strong>Combien de temps</strong> : ssign fait confiance à un jeton enregistré pendant 20 minutes, en deçà de sa
 durée de vie d'environ 30 minutes, et se reconnecte quand il reste moins de 2 minutes.</li>
 <li><strong>Permissions</strong> : sur les systèmes Unix, le dossier est créé en mode <code>0700</code> et le fichier en
-<code>0600</code>, lisibles par votre seul utilisateur.</li>
-<li>Un cache enregistré pour une autre adresse e-mail, expiré ou illisible est ignoré, et ssign se reconnecte.</li>
+<code>0600</code>, lisibles par votre seul utilisateur. Le fichier a ces droits dès son premier octet : il est écrit
+sous un nom temporaire, puis renommé. Si le dossier appartient à un autre compte, rien n'y est écrit.</li>
+<li>Un cache enregistré pour une autre adresse e-mail, expiré ou illisible est ignoré, de même que, sur les systèmes
+Unix, un cache qui appartient à un autre compte ou que d'autres peuvent lire ; ssign se reconnecte alors.</li>
 </ul>
 <div class="note">Quiconque peut lire <code>session.json</code> peut signer en votre nom jusqu'à l'expiration du jeton.
 Gardez-le en tête sur une machine partagée.</div>
