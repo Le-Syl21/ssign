@@ -121,9 +121,27 @@ pub fn pe_hash(pe: &[u8]) -> Result<[u8; 32]> {
 
 // ---- prepare / finalize ---------------------------------------------------
 
-/// The Certum "Code Signing 2021 CA" intermediate, embedded so the chain to the
-/// (widely trusted) root is complete in the signature itself.
-const INTERMEDIATE_DER: &[u8] = include_bytes!("certs/ccsca2021.der");
+/// The Certum intermediates that issue SimplySign code signing certificates:
+/// "Code Signing 2021 CA" (standard) and "Extended Validation Code Signing
+/// 2021 CA" (EV). The one that issued the signing certificate is embedded, so
+/// the chain to the (widely trusted) root is complete in the signature itself.
+/// Windows does not fetch a missing intermediate for the UAC prompt, which
+/// then shows "Unknown publisher".
+const INTERMEDIATES_DER: &[&[u8]] = &[
+    include_bytes!("certs/ccsca2021.der"),
+    include_bytes!("certs/cevcsca2021.der"),
+];
+
+/// The embedded intermediate whose subject is `issuer_der` (the DER-encoded
+/// issuer Name of the signing certificate), if any.
+fn intermediate_for(issuer_der: &[u8]) -> Option<&'static [u8]> {
+    INTERMEDIATES_DER.iter().copied().find(|der| {
+        x509_cert::Certificate::from_der(der)
+            .ok()
+            .and_then(|c| c.tbs_certificate().subject().to_der().ok())
+            .is_some_and(|subject| subject == issuer_der)
+    })
+}
 
 /// Decode a PEM certificate to DER (pass-through if already DER).
 pub fn pem_to_der(cert: &[u8]) -> Result<Vec<u8>> {
@@ -283,10 +301,12 @@ pub fn finalize(
         &asn1::ctx(0, &prep.spc_indirect),
     ]);
 
-    // certificates [0] IMPLICIT SET OF: the leaf plus the Certum intermediate,
-    // so the chain to the trusted root is complete.
+    // certificates [0] IMPLICIT SET OF: the leaf plus the Certum intermediate
+    // that issued it, so the chain to the trusted root is complete.
     let mut certs = cert_der.to_vec();
-    certs.extend_from_slice(INTERMEDIATE_DER);
+    if let Some(intermediate) = intermediate_for(&issuer) {
+        certs.extend_from_slice(intermediate);
+    }
 
     let signed_data = asn1::seq(&[
         &asn1::int_one(),
@@ -402,6 +422,33 @@ pub fn utc_time(unix: u64) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    fn subject_der(cert_der: &[u8]) -> Vec<u8> {
+        let cert = x509_cert::Certificate::from_der(cert_der).unwrap();
+        cert.tbs_certificate().subject().to_der().unwrap()
+    }
+
+    fn issuer_der(cert_der: &[u8]) -> Vec<u8> {
+        let cert = x509_cert::Certificate::from_der(cert_der).unwrap();
+        cert.tbs_certificate().issuer().to_der().unwrap()
+    }
+
+    /// An EV certificate is issued by "Extended Validation Code Signing 2021
+    /// CA", a standard one by "Code Signing 2021 CA": each must get its own
+    /// issuer embedded, or Windows UAC shows "Unknown publisher".
+    #[test]
+    fn picks_the_intermediate_that_issued_the_certificate() {
+        let standard: &[u8] = include_bytes!("certs/ccsca2021.der");
+        let ev: &[u8] = include_bytes!("certs/cevcsca2021.der");
+        assert_eq!(intermediate_for(&subject_der(standard)), Some(standard));
+        assert_eq!(intermediate_for(&subject_der(ev)), Some(ev));
+    }
+
+    #[test]
+    fn embeds_no_intermediate_for_a_foreign_issuer() {
+        let cert_der = include_bytes!("../tests/fixtures/selftest_cert.der");
+        assert_eq!(intermediate_for(&issuer_der(cert_der)), None);
+    }
 
     #[test]
     fn pe_hash_covers_the_alignment_padding() {
