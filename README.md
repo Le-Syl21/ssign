@@ -201,7 +201,8 @@ osslsigncode sign \
 It reads the same `CERTUM_EMAIL` / `CERTUM_OTP` (or `CERTUM_TOKEN`) as the CLI
 and **caches the cloud session**, so signing many files in a row needs only one
 code. `-ac` embeds the Certum "Code Signing 2021 CA" intermediate so the chain
-verifies. `ssign-pkcs11/tests/sign-all-formats.sh` signs one file of each format
+verifies; for an EV certificate, pass "Extended Validation Code Signing 2021 CA"
+(`ssign-core/src/certs/cevcsca2021.der`) instead, or UAC shows "Unknown publisher". `ssign-pkcs11/tests/sign-all-formats.sh` signs one file of each format
 end to end.
 
 ### Contributing — native formats wanted
@@ -401,7 +402,9 @@ osslsigncode sign \
 Il lit les mêmes `CERTUM_EMAIL` / `CERTUM_OTP` (ou `CERTUM_TOKEN`) que la CLI et
 **met en cache la session cloud**, donc signer plusieurs fichiers d'affilée ne
 demande qu'un seul code. `-ac` embarque l'intermédiaire Certum « Code Signing
-2021 CA » pour que la chaîne se vérifie. `ssign-pkcs11/tests/sign-all-formats.sh`
+2021 CA » pour que la chaîne se vérifie ; pour un certificat EV, passez plutôt
+« Extended Validation Code Signing 2021 CA » (`ssign-core/src/certs/cevcsca2021.der`),
+sinon la fenêtre UAC affiche « Éditeur inconnu ». `ssign-pkcs11/tests/sign-all-formats.sh`
 signe un fichier de chaque format de bout en bout.
 
 ### Contribuer — formats natifs recherchés

@@ -27,6 +27,7 @@ PROTOCOL = BLOB + "docs/simplysign-protocol.md"
 CI_FILE = BLOB + ".github/workflows/ci.yml"
 TEST_SCRIPT = BLOB + "ssign-pkcs11/tests/sign-all-formats.sh"
 INTERMEDIATE = BLOB + "ssign-core/src/certs/ccsca2021.der"
+INTERMEDIATE_EV = BLOB + "ssign-core/src/certs/cevcsca2021.der"
 DISCORD = "https://discord.gg/T37DYHmt2j"
 CRATE = "https://crates.io/crates/ssign"
 OSSLSIGNCODE = "https://github.com/mtrojnar/osslsigncode"
@@ -935,6 +936,9 @@ present and falls back to the engine. Both work with the module. On Debian or Ub
 repository ships it in DER form as <a href="{INTERMEDIATE}"><code>ssign-core/src/certs/ccsca2021.der</code></a>;
 convert it to PEM with OpenSSL:</p>
 {pre(INTER_PEM)}
+<p>An EV certificate is issued by a different intermediate, “Extended Validation Code Signing 2021 CA”, shipped as
+<a href="{INTERMEDIATE_EV}"><code>ssign-core/src/certs/cevcsca2021.der</code></a>: pass that one to <code>-ac</code>
+instead. With the wrong intermediate, the UAC prompt shows “Unknown publisher”.</p>
 
 <h2>4. Sign</h2>
 {pre(OSSL_EN)}
@@ -994,6 +998,9 @@ Debian ou Ubuntu :</p>
 dépôt le fournit au format DER dans <a href="{INTERMEDIATE}"><code>ssign-core/src/certs/ccsca2021.der</code></a> ;
 convertissez-le en PEM avec OpenSSL :</p>
 {pre(INTER_PEM)}
+<p>Un certificat EV est émis par un autre intermédiaire, « Extended Validation Code Signing 2021 CA », fourni dans
+<a href="{INTERMEDIATE_EV}"><code>ssign-core/src/certs/cevcsca2021.der</code></a> : passez plutôt celui-là à
+<code>-ac</code>. Avec le mauvais intermédiaire, la fenêtre UAC affiche « Éditeur inconnu ».</p>
 
 <h2>4. Signer</h2>
 {pre(OSSL_FR)}
@@ -1100,7 +1107,8 @@ machine, keep that in mind.</div>
 <h2>What the signature contains</h2>
 <p>ssign builds a standard Authenticode PKCS#7 SignedData: the file's Authenticode SHA-256 hash, the signing time, the
 optional description and URL (<code>-n</code>, <code>-u</code>), the RSA signature from the cloud, your certificate and
-the Certum “Code Signing 2021 CA” intermediate, and the RFC 3161 timestamp token. It is embedded in the PE certificate
+the Certum intermediate that issued it (“Code Signing 2021 CA”, or “Extended Validation Code Signing 2021 CA” for an EV
+certificate), and the RFC 3161 timestamp token. It is embedded in the PE certificate
 table and the PE checksum is updated. The digest sent to the cloud is the SHA-256 of the signed attributes that carry
 the file's hash.</p>
 
@@ -1192,7 +1200,8 @@ Gardez-le en tête sur une machine partagée.</div>
 <h2>Ce que contient la signature</h2>
 <p>ssign construit un SignedData PKCS#7 Authenticode standard : l'empreinte Authenticode SHA-256 du fichier, l'heure de
 signature, la description et l'URL facultatives (<code>-n</code>, <code>-u</code>), la signature RSA du cloud, votre
-certificat et l'intermédiaire Certum « Code Signing 2021 CA », et le jeton d'horodatage RFC 3161. Il est intégré à la
+certificat et l'intermédiaire Certum qui l'a émis (« Code Signing 2021 CA », ou « Extended Validation Code Signing 2021
+CA » pour un certificat EV), et le jeton d'horodatage RFC 3161. Il est intégré à la
 table des certificats du fichier PE, dont la somme de contrôle est mise à jour. L'empreinte envoyée au cloud est le
 SHA-256 des attributs signés qui portent l'empreinte du fichier.</p>
 

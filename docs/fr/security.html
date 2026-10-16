@@ -109,7 +109,8 @@ Gardez-le en tête sur une machine partagée.</div>
 <h2>Ce que contient la signature</h2>
 <p>ssign construit un SignedData PKCS#7 Authenticode standard : l'empreinte Authenticode SHA-256 du fichier, l'heure de
 signature, la description et l'URL facultatives (<code>-n</code>, <code>-u</code>), la signature RSA du cloud, votre
-certificat et l'intermédiaire Certum « Code Signing 2021 CA », et le jeton d'horodatage RFC 3161. Il est intégré à la
+certificat et l'intermédiaire Certum qui l'a émis (« Code Signing 2021 CA », ou « Extended Validation Code Signing 2021
+CA » pour un certificat EV), et le jeton d'horodatage RFC 3161. Il est intégré à la
 table des certificats du fichier PE, dont la somme de contrôle est mise à jour. L'empreinte envoyée au cloud est le
 SHA-256 des attributs signés qui portent l'empreinte du fichier.</p>
 

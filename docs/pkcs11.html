@@ -59,6 +59,9 @@ present and falls back to the engine. Both work with the module. On Debian or Ub
 repository ships it in DER form as <a href="https://github.com/Le-Syl21/ssign/blob/main/ssign-core/src/certs/ccsca2021.der"><code>ssign-core/src/certs/ccsca2021.der</code></a>;
 convert it to PEM with OpenSSL:</p>
 <pre><code>openssl x509 -inform DER -in ccsca2021.der -out certum-code-signing-2021-ca.pem</code></pre>
+<p>An EV certificate is issued by a different intermediate, “Extended Validation Code Signing 2021 CA”, shipped as
+<a href="https://github.com/Le-Syl21/ssign/blob/main/ssign-core/src/certs/cevcsca2021.der"><code>ssign-core/src/certs/cevcsca2021.der</code></a>: pass that one to <code>-ac</code>
+instead. With the wrong intermediate, the UAC prompt shows “Unknown publisher”.</p>
 
 <h2>4. Sign</h2>
 <pre><code>cargo build -p ssign-pkcs11 --release   # → target/release/libssign_pkcs11.so

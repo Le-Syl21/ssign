@@ -105,7 +105,8 @@ machine, keep that in mind.</div>
 <h2>What the signature contains</h2>
 <p>ssign builds a standard Authenticode PKCS#7 SignedData: the file's Authenticode SHA-256 hash, the signing time, the
 optional description and URL (<code>-n</code>, <code>-u</code>), the RSA signature from the cloud, your certificate and
-the Certum “Code Signing 2021 CA” intermediate, and the RFC 3161 timestamp token. It is embedded in the PE certificate
+the Certum intermediate that issued it (“Code Signing 2021 CA”, or “Extended Validation Code Signing 2021 CA” for an EV
+certificate), and the RFC 3161 timestamp token. It is embedded in the PE certificate
 table and the PE checksum is updated. The digest sent to the cloud is the SHA-256 of the signed attributes that carry
 the file's hash.</p>
 

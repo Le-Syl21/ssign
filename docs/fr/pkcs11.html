@@ -61,6 +61,9 @@ Debian ou Ubuntu :</p>
 dépôt le fournit au format DER dans <a href="https://github.com/Le-Syl21/ssign/blob/main/ssign-core/src/certs/ccsca2021.der"><code>ssign-core/src/certs/ccsca2021.der</code></a> ;
 convertissez-le en PEM avec OpenSSL :</p>
 <pre><code>openssl x509 -inform DER -in ccsca2021.der -out certum-code-signing-2021-ca.pem</code></pre>
+<p>Un certificat EV est émis par un autre intermédiaire, « Extended Validation Code Signing 2021 CA », fourni dans
+<a href="https://github.com/Le-Syl21/ssign/blob/main/ssign-core/src/certs/cevcsca2021.der"><code>ssign-core/src/certs/cevcsca2021.der</code></a> : passez plutôt celui-là à
+<code>-ac</code>. Avec le mauvais intermédiaire, la fenêtre UAC affiche « Éditeur inconnu ».</p>
 
 <h2>4. Signer</h2>
 <pre><code>cargo build -p ssign-pkcs11 --release   # → target/release/libssign_pkcs11.so
