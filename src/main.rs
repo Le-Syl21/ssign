@@ -30,17 +30,35 @@ struct Cli {
     files: Vec<PathBuf>,
 
     /// Certum account e-mail.
-    #[arg(short = 'e', long, env = "CERTUM_EMAIL", value_name = "EMAIL")]
+    #[arg(
+        short = 'e',
+        long,
+        env = "CERTUM_EMAIL",
+        hide_env_values = true,
+        value_name = "EMAIL"
+    )]
     email: String,
 
     /// TOTP **seed** (base32). ssign derives the 6-digit code itself — use this
     /// for CI / full automation. Mutually exclusive with --token.
-    #[arg(short = 'O', long, env = "CERTUM_OTP", value_name = "SEED")]
+    #[arg(
+        short = 'O',
+        long,
+        env = "CERTUM_OTP",
+        hide_env_values = true,
+        value_name = "SEED"
+    )]
     otp: Option<String>,
 
     /// A **current** 6-digit code from your authenticator app — use this for a
     /// one-off manual signing on your own machine. Mutually exclusive with --otp.
-    #[arg(short = 'T', long, env = "CERTUM_TOKEN", value_name = "CODE")]
+    #[arg(
+        short = 'T',
+        long,
+        env = "CERTUM_TOKEN",
+        hide_env_values = true,
+        value_name = "CODE"
+    )]
     token: Option<String>,
 
     /// Write signed files here instead of overwriting them in place.
@@ -377,6 +395,29 @@ mod tests {
             std::env::temp_dir().join(format!("ssign-{label}-{}-{nonce}", std::process::id()));
         std::fs::create_dir_all(&dir).unwrap();
         dir
+    }
+
+    #[test]
+    fn help_names_the_secret_env_vars_but_never_their_values() {
+        use clap::CommandFactory;
+        let vars = [
+            ("CERTUM_EMAIL", "leak-email@example.invalid"),
+            ("CERTUM_OTP", "LEAKSEEDJBSWY3DPEHPK3PXP"),
+            ("CERTUM_TOKEN", "987654"),
+        ];
+        for (name, value) in vars {
+            std::env::set_var(name, value);
+        }
+        let help = Cli::command().render_long_help().to_string();
+        let short = Cli::command().render_help().to_string();
+        for (name, _) in vars {
+            std::env::remove_var(name);
+        }
+        for (name, value) in vars {
+            assert!(help.contains(name), "{name} missing from --help");
+            assert!(!help.contains(value), "--help printed {name}");
+            assert!(!short.contains(value), "-h printed {name}");
+        }
     }
 
     #[test]
