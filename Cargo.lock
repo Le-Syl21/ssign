@@ -1843,7 +1843,7 @@ dependencies = [
 
 [[package]]
 name = "ssign"
-version = "0.1.9"
+version = "0.1.10"
 dependencies = [
  "anyhow",
  "clap",
@@ -1853,7 +1853,7 @@ dependencies = [
 
 [[package]]
 name = "ssign-core"
-version = "0.1.7"
+version = "0.1.8"
 dependencies = [
  "anyhow",
  "aws-lc-rs",
