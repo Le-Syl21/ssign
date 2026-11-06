@@ -6,7 +6,7 @@
 //! base32 secret (Certum defaults are assumed).
 
 use anyhow::{anyhow, bail, Context, Result};
-use hmac::{Hmac, Mac};
+use hmac::{digest::KeyInit, Hmac, Mac};
 use sha1::Sha1;
 use sha2::{Sha256, Sha512};
 use zeroize::Zeroizing;
@@ -93,7 +93,7 @@ impl Totp {
         let counter = (unix_time / self.period).to_be_bytes();
         macro_rules! mac {
             ($h:ty) => {{
-                let mut m = <Hmac<$h> as Mac>::new_from_slice(&self.secret)
+                let mut m = <Hmac<$h> as KeyInit>::new_from_slice(&self.secret)
                     .expect("HMAC accepts any key length");
                 m.update(&counter);
                 m.finalize().into_bytes().to_vec()

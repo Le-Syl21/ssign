@@ -17,17 +17,9 @@ exclude = ["tests/fixtures/*"]
 [dependencies]
 anyhow = "1"
 base32 = "0.5"
-# Held at the digest 0.10 generation on purpose. sha1 0.11 / sha2 0.11 /
-# hmac 0.13 are the digest 0.11 wave, and the dev-dependency `rsa` has not
-# followed: its newest release is 0.10.0-rc.18, still on digest 0.10, so the
-# selftest that assembles a verifiable PE stops compiling (two `const_oid`
-# versions, `AssociatedOid` unsatisfied). Nothing is at stake meanwhile --
-# RUSTSEC-2021-0100 is the only sha2 advisory and it ends at 0.9.7. Revisit
-# when rsa 0.10 is stable. `generic-array` follows from here too: it is not
-# ours to move, `crypto-common` pins it to =0.14.7.
-hmac = "0.12"
-sha1 = "0.10"
-sha2 = "0.10"
+hmac = "0.13"
+sha1 = "0.11"
+sha2 = "0.11"
 # `rustls` replaces 0.12's `rustls-tls`, and with it the trust anchors: 0.13
 # verifies through `rustls-platform-verifier` (the OS store) instead of the
 # Mozilla roots reqwest used to bundle. Upstream no longer wires
@@ -38,7 +30,7 @@ reqwest = { version = "0.13", default-features = false, features = ["blocking", 
 serde_json = "1"
 regex = "1"
 hex = "0.4"
-cfb = "0.15"
+cfb = "0.16"
 uuid = "1"
 x509-cert = "0.3"
 der = { version = "0.8", features = ["pem"] }
@@ -47,7 +39,7 @@ zeroize = "1.9"
 aws-lc-rs = { version = "1.18", default-features = false, features = ["aws-lc-sys"] }
 
 [dev-dependencies]
-rsa = { version = "0.9", features = ["sha2", "pem"] }
+rsa = "0.10.0-rc.21"
 
 [target.'cfg(unix)'.dependencies]
 # geteuid, to refuse a session cache directory or file owned by another account.
