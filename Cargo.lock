@@ -1892,6 +1892,7 @@ dependencies = [
  "sha2",
  "uuid",
  "x509-cert 0.3.0",
+ "zeroize",
 ]
 
 [[package]]

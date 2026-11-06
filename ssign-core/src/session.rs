@@ -25,6 +25,7 @@ use reqwest::blocking::Client;
 use sha1::{Digest, Sha1};
 use x509_cert::der::Decode;
 use x509_cert::Certificate;
+use zeroize::Zeroizing;
 
 /// How long a cached token is trusted before we log in again. The real token
 /// lives ~30 min; we stay well inside that so a sign never starts on a token
@@ -34,7 +35,7 @@ const CACHE_TTL_SECS: u64 = 20 * 60;
 /// An authenticated Certum cloud session ready to sign SHA-256 digests.
 pub struct CloudSession {
     http: Client,
-    token: String,
+    token: Zeroizing<String>,
     card: card::Card,
     cert_der: Vec<u8>,
     pubkey_der: Vec<u8>,
@@ -51,14 +52,14 @@ impl CloudSession {
     /// Log in (email + current 6-digit code) and materialize the card,
     /// certificate and the derived key descriptors.
     pub fn open(email: &str, otp_code: &str) -> Result<Self> {
-        let token = auth::login(email, otp_code)?.0;
+        let token = Zeroizing::new(auth::login(email, otp_code)?.0);
         let http = client::client()?;
         let card = card::fetch(&http, &token)?;
         Self::from_parts(http, token, card)
     }
 
     /// Build a session from an already-issued token and card (no login).
-    fn from_parts(http: Client, token: String, card: card::Card) -> Result<Self> {
+    fn from_parts(http: Client, token: Zeroizing<String>, card: card::Card) -> Result<Self> {
         let cert_der = crate::authenticode::pem_to_der(&card.certificate_pem)
             .context("decoding the signing certificate")?;
         let cert = Certificate::from_der(&cert_der).context("parsing the signing certificate")?;
@@ -145,7 +146,7 @@ impl CloudSession {
                 return None;
             }
         }
-        let raw = fs::read(path).ok()?;
+        let raw = Zeroizing::new(fs::read(path).ok()?);
         let v: serde_json::Value = serde_json::from_slice(&raw).ok()?;
         if v.get("email")?.as_str()? != email {
             return None;
@@ -154,7 +155,7 @@ impl CloudSession {
         if now() + 120 >= expires_at {
             return None;
         }
-        let token = v.get("token")?.as_str()?.to_string();
+        let token = Zeroizing::new(v.get("token")?.as_str()?.to_string());
         let serial = v.get("serial")?.as_str()?.to_string();
         let certificate_pem = v.get("cert_pem")?.as_str()?.as_bytes().to_vec();
         let card = card::Card {
@@ -176,12 +177,12 @@ impl CloudSession {
         let doc = serde_json::json!({
             "v": 1,
             "email": email,
-            "token": self.token,
+            "token": self.token.as_str(),
             "expires_at": now() + CACHE_TTL_SECS,
             "serial": self.card.serial,
             "cert_pem": String::from_utf8_lossy(&self.card.certificate_pem),
         });
-        let _ = write_private(path, doc.to_string().as_bytes());
+        let _ = write_private(path, Zeroizing::new(doc.to_string()).as_bytes());
     }
 }
 
@@ -286,8 +287,12 @@ mod tests {
             serial: "1234567890".into(),
             certificate_pem: pem.into_bytes(),
         };
-        CloudSession::from_parts(client::client().unwrap(), "token-abc".into(), card)
-            .expect("build session from parts")
+        CloudSession::from_parts(
+            client::client().unwrap(),
+            Zeroizing::new("token-abc".into()),
+            card,
+        )
+        .expect("build session from parts")
     }
 
     fn temp_cache(name: &str) -> PathBuf {
@@ -306,7 +311,7 @@ mod tests {
 
         let loaded = CloudSession::load_cached_from(&path, "user@example.com")
             .expect("cached session should reload");
-        assert_eq!(loaded.token, "token-abc");
+        assert_eq!(loaded.token.as_str(), "token-abc");
         assert_eq!(loaded.card_serial(), "1234567890");
         assert_eq!(loaded.certificate_der(), fake_session().certificate_der());
         assert_eq!(loaded.key_id(), fake_session().key_id());

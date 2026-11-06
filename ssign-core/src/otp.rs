@@ -9,6 +9,7 @@ use anyhow::{anyhow, bail, Context, Result};
 use hmac::{Hmac, Mac};
 use sha1::Sha1;
 use sha2::{Sha256, Sha512};
+use zeroize::Zeroizing;
 
 #[derive(Clone, Copy)]
 enum Algo {
@@ -19,7 +20,7 @@ enum Algo {
 
 /// Parsed TOTP parameters.
 pub struct Totp {
-    secret: Vec<u8>,
+    secret: Zeroizing<Vec<u8>>,
     algo: Algo,
     digits: u32,
     period: u64,
@@ -29,7 +30,7 @@ impl Totp {
     /// Parse an `otpauth://totp/...` URI or a bare base32 secret.
     /// Certum defaults (SHA-256 / 6 / 30) are used for anything unspecified.
     pub fn parse(input: &str) -> Result<Self> {
-        let mut secret_b32 = String::new();
+        let mut secret_b32 = Zeroizing::new(String::new());
         let mut algo = Algo::Sha256;
         let mut digits = 6u32;
         let mut period = 30u64;
@@ -57,18 +58,27 @@ impl Totp {
                 bail!("otpauth URI has no secret");
             }
         } else {
-            secret_b32 = input.trim().to_string();
+            secret_b32 = Zeroizing::new(input.trim().to_string());
         }
 
         // Base32 alphabets sometimes carry padding/whitespace; normalize.
-        let cleaned: String = secret_b32
-            .chars()
-            .filter(|c| !c.is_whitespace() && *c != '=')
-            .collect();
+        let cleaned: Zeroizing<String> = Zeroizing::new(
+            secret_b32
+                .chars()
+                .filter(|c| !c.is_whitespace() && *c != '=')
+                .collect(),
+        );
         let secret = base32::decode(base32::Alphabet::Rfc4648 { padding: false }, &cleaned)
+            .map(Zeroizing::new)
             .ok_or_else(|| anyhow!("secret is not valid base32"))?;
         if secret.is_empty() {
             bail!("empty TOTP secret");
+        }
+        if !(6..=8).contains(&digits) {
+            bail!("unsupported TOTP digits: {digits} (expected 6 to 8)");
+        }
+        if period == 0 {
+            bail!("TOTP period must be greater than zero");
         }
         Ok(Totp {
             secret,
@@ -106,9 +116,9 @@ impl Totp {
 }
 
 /// Minimal percent-decoding for otpauth query values (e.g. `%3D` -> `=`).
-fn pct_decode(s: &str) -> String {
+fn pct_decode(s: &str) -> Zeroizing<String> {
     let bytes = s.as_bytes();
-    let mut out = Vec::with_capacity(bytes.len());
+    let mut out = Zeroizing::new(Vec::with_capacity(bytes.len()));
     let mut i = 0;
     while i < bytes.len() {
         if bytes[i] == b'%' && i + 2 < bytes.len() {
@@ -121,7 +131,7 @@ fn pct_decode(s: &str) -> String {
         out.push(bytes[i]);
         i += 1;
     }
-    String::from_utf8_lossy(&out).into_owned()
+    Zeroizing::new(String::from_utf8_lossy(&out).into_owned())
 }
 
 #[cfg(test)]
@@ -160,5 +170,24 @@ mod tests {
         let t = Totp::parse(uri).unwrap();
         assert!(matches!(t.algo, Algo::Sha1));
         assert_eq!(t.digits, 8);
+    }
+
+    #[test]
+    fn rejects_otpauth_parameters_it_cannot_honour() {
+        let base = "otpauth://totp/Certum:me@example.com?secret=GEZDGNBVGY3TQOJQ";
+        for bad in [
+            "algorithm=MD5",
+            "digits=5",
+            "digits=9",
+            "digits=10",
+            "digits=-1",
+            "period=0",
+            "period=-30",
+        ] {
+            assert!(Totp::parse(&format!("{base}&{bad}")).is_err(), "{bad}");
+        }
+        for good in ["digits=6", "digits=8", "period=60", "algorithm=sha512"] {
+            assert!(Totp::parse(&format!("{base}&{good}")).is_ok(), "{good}");
+        }
     }
 }

@@ -42,6 +42,7 @@ cfb = "0.15"
 uuid = "1"
 x509-cert = "0.3"
 der = { version = "0.8", features = ["pem"] }
+zeroize = "1.9"
 
 [dev-dependencies]
 rsa = { version = "0.9", features = ["sha2", "pem"] }
