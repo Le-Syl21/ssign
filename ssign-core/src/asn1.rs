@@ -118,6 +118,13 @@ pub fn children(tlv: &[u8]) -> Result<Vec<&[u8]>, &'static str> {
     Ok(out)
 }
 
+/// The content octets of a single TLV.
+pub fn content(tlv: &[u8]) -> Result<&[u8], &'static str> {
+    let (hdr, len) = read_len(tlv, 1)?;
+    let end = hdr.checked_add(len).ok_or("TLV length overflows")?;
+    tlv.get(hdr..end).ok_or("truncated TLV")
+}
+
 /// Parse a DER length that starts at `at` (just after the tag). Returns the
 /// content start offset (absolute in `b`) and the content length.
 fn read_len(b: &[u8], at: usize) -> Result<(usize, usize), &'static str> {

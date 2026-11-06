@@ -1878,6 +1878,7 @@ name = "ssign-core"
 version = "0.1.7"
 dependencies = [
  "anyhow",
+ "aws-lc-rs",
  "base32",
  "cfb",
  "der 0.8.3",
