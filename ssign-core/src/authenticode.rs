@@ -7,7 +7,8 @@
 //!   splice it into the PE's certificate table.
 
 use crate::asn1;
-use anyhow::{bail, Context, Result};
+use anyhow::{anyhow, bail, Context, Result};
+use aws_lc_rs::signature::{UnparsedPublicKey, RSA_PKCS1_2048_8192_SHA256};
 use der::{Decode, Encode};
 use sha2::{Digest, Sha256};
 use std::path::Path;
@@ -252,6 +253,14 @@ pub fn finalize(
     timestamp_token: Option<&[u8]>,
 ) -> Result<Vec<u8>> {
     let cert = x509_cert::Certificate::from_der(cert_der).context("parsing signing certificate")?;
+    let public_key = cert
+        .tbs_certificate()
+        .subject_public_key_info()
+        .subject_public_key
+        .raw_bytes();
+    UnparsedPublicKey::new(&RSA_PKCS1_2048_8192_SHA256, public_key)
+        .verify(&prep.signed_attrs_set, signature)
+        .map_err(|_| anyhow!("the cloud signature does not verify with the signing certificate"))?;
     let issuer = cert
         .tbs_certificate()
         .issuer()
@@ -545,6 +554,54 @@ mod tests {
         assert_eq!(utc_time(0), "700101000000Z");
         // 1783667881 == 2026-07-10 07:18:01 UTC (the fixture's signingTime).
         assert_eq!(utc_time(1783667881), "260710071801Z");
+    }
+
+    fn selftest_signature(prep: &Prepared) -> Vec<u8> {
+        use rsa::pkcs8::DecodePrivateKey;
+        use rsa::{Pkcs1v15Sign, RsaPrivateKey};
+        let key = RsaPrivateKey::from_pkcs8_pem(include_str!("../tests/fixtures/selftest_key.pem"))
+            .unwrap();
+        key.sign(Pkcs1v15Sign::new::<Sha256>(), &prep.to_be_signed)
+            .unwrap()
+    }
+
+    fn selftest_prep(signing_time: u64) -> Prepared {
+        let pe = include_bytes!("../tests/fixtures/hello.exe");
+        prepare(pe, Some("ssign"), None, &utc_time(signing_time)).unwrap()
+    }
+
+    #[test]
+    fn embeds_a_signature_that_verifies() {
+        let cert_der = include_bytes!("../tests/fixtures/selftest_cert.der");
+        let prep = selftest_prep(1783667881);
+        let signature = selftest_signature(&prep);
+        let signed = finalize(prep, &signature, cert_der, None).unwrap();
+        assert!(pe_layout(&signed).unwrap().cert_table_size > 0);
+    }
+
+    #[test]
+    fn refuses_a_signature_with_a_flipped_byte() {
+        let cert_der = include_bytes!("../tests/fixtures/selftest_cert.der");
+        let prep = selftest_prep(1783667881);
+        let mut signature = selftest_signature(&prep);
+        signature[100] ^= 1;
+        assert!(finalize(prep, &signature, cert_der, None).is_err());
+    }
+
+    #[test]
+    fn refuses_a_valid_signature_over_other_attributes() {
+        let cert_der = include_bytes!("../tests/fixtures/selftest_cert.der");
+        let signature = selftest_signature(&selftest_prep(1783667881));
+        let prep = selftest_prep(1783667882);
+        assert!(finalize(prep, &signature, cert_der, None).is_err());
+    }
+
+    #[test]
+    fn refuses_a_signature_from_another_key() {
+        let other_cert: &[u8] = include_bytes!("certs/ccsca2021.der");
+        let prep = selftest_prep(1783667881);
+        let signature = selftest_signature(&prep);
+        assert!(finalize(prep, &signature, other_cert, None).is_err());
     }
 
     /// End-to-end assembly check with a local self-signed key: prepare -> sign
