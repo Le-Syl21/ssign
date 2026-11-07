@@ -246,8 +246,17 @@ fn write_signed_file(
             publish_backup(input, out, original)?;
         }
 
-        atomic_replace(&signed_temp, out)
-            .with_context(|| format!("atomically replacing {}", out.display()))?;
+        match atomic_replace(&signed_temp, out) {
+            // Windows refuses to replace a file another process holds open. Tauri's bundler keeps the
+            // exe open while it runs the sign command, but lets others write to it.
+            Err(err) if cfg!(windows) && err.kind() == io::ErrorKind::PermissionDenied => {
+                overwrite_in_place(out, signed)?;
+                let _ = fs::remove_file(&signed_temp);
+            }
+            replaced => {
+                replaced.with_context(|| format!("atomically replacing {}", out.display()))?
+            }
+        }
         Ok(())
     })();
 
@@ -255,6 +264,17 @@ fn write_signed_file(
         let _ = fs::remove_file(&signed_temp);
     }
     result
+}
+
+fn overwrite_in_place(out: &Path, contents: &[u8]) -> Result<()> {
+    let mut file = OpenOptions::new()
+        .write(true)
+        .truncate(true)
+        .open(out)
+        .with_context(|| format!("opening {} to overwrite it", out.display()))?;
+    file.write_all(contents)
+        .and_then(|()| file.sync_all())
+        .with_context(|| format!("overwriting {}", out.display()))
 }
 
 fn publish_backup(input: &Path, out: &Path, original: &[u8]) -> Result<()> {
@@ -385,6 +405,20 @@ fn output_path(file: &Path, output_dir: Option<&Path>) -> Result<PathBuf> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn overwrite_in_place_writes_through_a_handle_someone_else_holds() {
+        let dir = unique_test_dir("overwrite-held");
+        let out = dir.join("app.exe");
+        fs::write(&out, b"unsigned and longer").unwrap();
+        let held = File::open(&out).unwrap();
+
+        overwrite_in_place(&out, b"signed").unwrap();
+
+        drop(held);
+        assert_eq!(fs::read(&out).unwrap(), b"signed");
+        let _ = fs::remove_dir_all(dir);
+    }
 
     fn unique_test_dir(label: &str) -> PathBuf {
         let nonce = SystemTime::now()
