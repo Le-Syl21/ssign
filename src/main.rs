@@ -232,6 +232,7 @@ fn write_signed_file(
     backup: bool,
 ) -> Result<()> {
     let signed_temp = write_synced_temp(out, "signed", signed)?;
+    let mut keep_temp = false;
     let result = (|| -> Result<()> {
         match fs::metadata(out) {
             Ok(metadata) => fs::set_permissions(&signed_temp, metadata.permissions())
@@ -250,7 +251,15 @@ fn write_signed_file(
             // Windows refuses to replace a file another process holds open. Tauri's bundler keeps the
             // exe open while it runs the sign command, but lets others write to it.
             Err(err) if cfg!(windows) && err.kind() == io::ErrorKind::PermissionDenied => {
-                overwrite_in_place(out, signed)?;
+                // The in-place write is not atomic: if it fails midway the file is left truncated,
+                // so the signed copy is the only complete result. Keep it and say where it is.
+                if let Err(err) = overwrite_in_place(out, signed) {
+                    keep_temp = true;
+                    return Err(err.context(format!(
+                        "the complete signed file was kept at {}",
+                        signed_temp.display()
+                    )));
+                }
                 let _ = fs::remove_file(&signed_temp);
             }
             replaced => {
@@ -260,7 +269,7 @@ fn write_signed_file(
         Ok(())
     })();
 
-    if result.is_err() {
+    if result.is_err() && !keep_temp {
         let _ = fs::remove_file(&signed_temp);
     }
     result
