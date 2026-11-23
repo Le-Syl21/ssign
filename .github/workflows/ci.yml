@@ -15,11 +15,11 @@ jobs:
       fail-fast: false
       matrix:
         include:
-          - os: ubuntu-22.04
+          - os: ubuntu-24.04
             target: x86_64-unknown-linux-gnu
             label: linux-x86_64
             lint: true
-          - os: ubuntu-22.04
+          - os: ubuntu-24.04
             target: aarch64-unknown-linux-gnu
             label: linux-aarch64
             cross: true
@@ -170,7 +170,7 @@ jobs:
   pre-sign-checks:
     needs: build
     if: startsWith(github.ref, 'refs/tags/v') || github.event_name == 'workflow_dispatch'
-    runs-on: ubuntu-22.04
+    runs-on: ubuntu-24.04
     environment: signing
     env:
       JSIGN_VERSION: "7.5"
@@ -353,7 +353,7 @@ jobs:
   sign-windows:
     needs: [build, pre-sign-checks]
     if: startsWith(github.ref, 'refs/tags/v')
-    runs-on: ubuntu-22.04
+    runs-on: ubuntu-24.04
     environment: signing
     steps:
       # Sign ourselves with the exact Linux binary just built in this run — no
@@ -435,7 +435,7 @@ jobs:
   release:
     needs: [build, sign-windows, sign-apple]
     if: startsWith(github.ref, 'refs/tags/v')
-    runs-on: ubuntu-22.04
+    runs-on: ubuntu-24.04
     permissions:
       contents: write
     steps:
@@ -466,7 +466,7 @@ jobs:
   publish-crates:
     needs: [build, release]
     if: startsWith(github.ref, 'refs/tags/v') && !contains(github.ref_name, '-')
-    runs-on: ubuntu-22.04
+    runs-on: ubuntu-24.04
     environment: crates-io
     permissions:
       contents: read
